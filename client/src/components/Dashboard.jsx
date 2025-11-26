@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import api from '../utils/api';
+import AIInsightsPanel from './AIInsightsPanel';
 
 export default function Dashboard() {
     const [data, setData] = useState(null);
@@ -145,6 +146,11 @@ export default function Dashboard() {
                         )}
                     </div>
                 </div>
+            </div>
+
+            {/* AI Insights Panel */}
+            <div className="mb-lg">
+                <AIInsightsPanel />
             </div>
 
             {/* Recent Conversations */}

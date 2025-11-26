@@ -62,6 +62,10 @@ class APIClient {
         return this.request(`/conversations/${id}`, { method: 'DELETE' });
     }
 
+    async deleteAllConversations() {
+        return this.request('/conversations/all', { method: 'DELETE' });
+    }
+
     // Analysis
     async runAnalysis(conversationIds = null) {
         return this.request('/analysis/run', {
@@ -96,6 +100,38 @@ class APIClient {
         a.click();
         window.URL.revokeObjectURL(url);
         document.body.removeChild(a);
+    }
+
+    // AI Analysis
+    async runAIAnalysis(conversationIds = null) {
+        return this.request('/ai-analysis/run', {
+            method: 'POST',
+            body: JSON.stringify({ conversation_ids: conversationIds }),
+        });
+    }
+
+    async getAIResults(page = 1, limit = 50, filters = {}) {
+        let url = `/ai-analysis/results?page=${page}&limit=${limit}`;
+        if (filters.intent) url += `&intent=${filters.intent}`;
+        if (filters.complexity) url += `&complexity=${filters.complexity}`;
+        if (filters.minChurnRisk) url += `&min_churn_risk=${filters.minChurnRisk}`;
+        return this.request(url);
+    }
+
+    async getAISummary(conversationId) {
+        return this.request(`/ai-analysis/summary/${conversationId}`);
+    }
+
+    async getAIInsights() {
+        return this.request('/ai-analysis/insights');
+    }
+
+    async getAICosts(period = 'month') {
+        return this.request(`/ai-analysis/costs?period=${period}`);
+    }
+
+    async getAIStats() {
+        return this.request('/ai-analysis/stats');
     }
 }
 

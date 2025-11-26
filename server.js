@@ -1,8 +1,10 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import { initializeDatabase } from './database.js';
 import conversationsRouter from './routes/conversations.js';
 import analysisRouter from './routes/analysis.js';
+import aiAnalysisRouter from './routes/aiAnalysis.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -15,6 +17,7 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 // API Routes
 app.use('/api/conversations', conversationsRouter);
 app.use('/api/analysis', analysisRouter);
+app.use('/api/ai-analysis', aiAnalysisRouter);
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -29,6 +32,7 @@ app.get('/', (req, res) => {
         endpoints: {
             conversations: '/api/conversations',
             analysis: '/api/analysis',
+            aiAnalysis: '/api/ai-analysis',
             health: '/api/health'
         }
     });

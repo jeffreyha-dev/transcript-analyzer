@@ -71,8 +71,93 @@ export function initializeDatabase() {
           calculated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
       `, (err) => {
+        if (err) console.error('Error creating metrics table:', err);
+      });
+
+      // AI Analysis Results table
+      db.run(`
+        CREATE TABLE IF NOT EXISTS ai_analysis_results (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          conversation_id TEXT UNIQUE NOT NULL,
+          
+          -- Feature 1: Summarization
+          summary TEXT,
+          key_points TEXT,
+          resolved BOOLEAN,
+          action_items TEXT,
+          
+          -- Feature 2: Advanced Sentiment
+          emotions TEXT,
+          sentiment_trajectory TEXT,
+          emotional_turning_points TEXT,
+          empathy_score REAL,
+          
+          -- Feature 3: Intent Classification
+          primary_intent TEXT,
+          secondary_intents TEXT,
+          category TEXT,
+          subcategory TEXT,
+          complexity TEXT,
+          
+          -- Feature 4: Agent Performance
+          communication_quality REAL,
+          problem_solving_score REAL,
+          compliance_score REAL,
+          personalization_score REAL,
+          agent_strengths TEXT,
+          agent_improvements TEXT,
+          
+          -- Feature 5: QA
+          policy_violations TEXT,
+          script_adherence_score REAL,
+          risk_flags TEXT,
+          best_practice_suggestions TEXT,
+          
+          -- Feature 6: Customer Journey
+          churn_risk_score REAL,
+          customer_personality TEXT,
+          lifetime_value_indicator TEXT,
+          intervention_suggestions TEXT,
+          
+          -- Metadata
+          provider_used TEXT,
+          tokens_used INTEGER,
+          cost REAL,
+          processing_time_ms INTEGER,
+          analyzed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          
+          FOREIGN KEY (conversation_id) REFERENCES conversations(conversation_id) ON DELETE CASCADE
+        )
+      `, (err) => {
+        if (err) console.error('Error creating ai_analysis_results table:', err);
+      });
+
+      // AI Cost Tracking table
+      db.run(`
+        CREATE TABLE IF NOT EXISTS ai_cost_tracking (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          date DATE NOT NULL,
+          provider TEXT NOT NULL,
+          conversations_analyzed INTEGER DEFAULT 0,
+          total_tokens INTEGER DEFAULT 0,
+          total_cost REAL DEFAULT 0,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `, (err) => {
+        if (err) console.error('Error creating ai_cost_tracking table:', err);
+      });
+
+      // AI Settings table
+      db.run(`
+        CREATE TABLE IF NOT EXISTS ai_settings (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          setting_key TEXT UNIQUE NOT NULL,
+          setting_value TEXT NOT NULL,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `, (err) => {
         if (err) {
-          console.error('Error creating metrics table:', err);
+          console.error('Error creating ai_settings table:', err);
           reject(err);
         } else {
           console.log('Database schema initialized successfully');
@@ -86,7 +171,7 @@ export function initializeDatabase() {
 // Helper function to run queries with promises
 export function runQuery(sql, params = []) {
   return new Promise((resolve, reject) => {
-    db.run(sql, params, function(err) {
+    db.run(sql, params, function (err) {
       if (err) reject(err);
       else resolve({ lastID: this.lastID, changes: this.changes });
     });

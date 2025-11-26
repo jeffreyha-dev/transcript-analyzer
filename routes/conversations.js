@@ -271,6 +271,33 @@ router.get('/:id', async (req, res) => {
 });
 
 /**
+ * DELETE /api/conversations/all
+ * Delete ALL conversations and analysis data (use with caution!)
+ */
+router.delete('/all', async (req, res) => {
+    try {
+        // Delete all AI analysis results
+        await runQuery('DELETE FROM ai_analysis_results');
+
+        // Delete all traditional analysis results
+        await runQuery('DELETE FROM analysis_results');
+
+        // Delete all conversations
+        const result = await runQuery('DELETE FROM conversations');
+
+        res.json({
+            success: true,
+            message: 'All conversations and analysis data cleared',
+            deleted: result.changes
+        });
+
+    } catch (error) {
+        console.error('Delete all error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+/**
  * DELETE /api/conversations/:id
  * Delete a conversation
  */

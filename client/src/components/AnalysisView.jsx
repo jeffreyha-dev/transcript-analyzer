@@ -9,6 +9,9 @@ export default function AnalysisView() {
     const [pagination, setPagination] = useState(null);
     const [sentimentFilter, setSentimentFilter] = useState('');
     const [error, setError] = useState(null);
+    const [selectedConversation, setSelectedConversation] = useState(null);
+    const [selectedIds, setSelectedIds] = useState(new Set());
+    const [aiAnalyzing, setAiAnalyzing] = useState(false);
 
     useEffect(() => {
         loadResults();
@@ -28,6 +31,40 @@ export default function AnalysisView() {
         }
     };
 
+    const toggleSelection = (id) => {
+        const newSelected = new Set(selectedIds);
+        if (newSelected.has(id)) {
+            newSelected.delete(id);
+        } else {
+            newSelected.add(id);
+        }
+        setSelectedIds(newSelected);
+    };
+
+    const toggleSelectAll = () => {
+        if (selectedIds.size === results.length) {
+            setSelectedIds(new Set());
+        } else {
+            setSelectedIds(new Set(results.map(r => r.conversation_id)));
+        }
+    };
+
+    const handleRunAIAnalysis = async () => {
+        if (selectedIds.size === 0) return;
+
+        try {
+            setAiAnalyzing(true);
+            setError(null);
+            const response = await api.runAIAnalysis(Array.from(selectedIds));
+            alert(`AI Analysis initiated for ${response.analyzed} conversations! Check the AI Analysis tab for results.`);
+            setSelectedIds(new Set());
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            setAiAnalyzing(false);
+        }
+    };
+
     const runAnalysis = async () => {
         try {
             setAnalyzing(true);
@@ -42,6 +79,102 @@ export default function AnalysisView() {
         }
     };
 
+    const viewConversation = async (conversationId) => {
+        try {
+            const response = await api.getConversation(conversationId);
+            setSelectedConversation(response.conversation);
+        } catch (err) {
+            alert('Failed to load conversation: ' + err.message);
+        }
+    };
+
+    if (selectedConversation) {
+        return (
+            <div className="container" style={{ paddingTop: '2rem', paddingBottom: '2rem' }}>
+                <button
+                    onClick={() => setSelectedConversation(null)}
+                    className="btn btn-secondary"
+                    style={{ marginBottom: '1rem' }}
+                >
+                    ← Back to Results
+                </button>
+
+                <div className="card">
+                    <div className="card-header">
+                        <h2>Conversation: {selectedConversation.conversation_id}</h2>
+                        <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginTop: '0.5rem' }}>
+                            Uploaded: {new Date(selectedConversation.uploaded_at).toLocaleString()}
+                        </p>
+                    </div>
+                    <div className="card-body">
+                        <h3 style={{ fontSize: '1.125rem', marginBottom: '0.75rem' }}>💬 Full Transcript</h3>
+                        <div style={{
+                            background: 'var(--bg-tertiary)',
+                            border: '1px solid var(--border-color)',
+                            borderRadius: 'var(--radius-md)',
+                            padding: '1.5rem',
+                            maxHeight: '600px',
+                            overflowY: 'auto'
+                        }}>
+                            {selectedConversation.transcript_details.split(/\n|\\n|\|/).map((line, i) => {
+                                const trimmed = line.trim();
+                                if (!trimmed) return null;
+
+                                // Parse speaker and message
+                                const match = trimmed.match(/^(Agent|Customer|User|Support):\s*(.+)$/i);
+                                if (match) {
+                                    const speaker = match[1];
+                                    const message = match[2];
+                                    const isAgent = speaker.toLowerCase() === 'agent' || speaker.toLowerCase() === 'support';
+
+                                    return (
+                                        <div key={i} style={{
+                                            marginBottom: '1rem',
+                                            padding: '0.75rem',
+                                            background: isAgent ? 'rgba(99, 102, 241, 0.1)' : 'rgba(139, 92, 246, 0.1)',
+                                            borderLeft: `3px solid ${isAgent ? '#6366f1' : '#8b5cf6'}`,
+                                            borderRadius: '0.25rem'
+                                        }}>
+                                            <div style={{
+                                                fontSize: '0.75rem',
+                                                fontWeight: '600',
+                                                color: isAgent ? '#6366f1' : '#8b5cf6',
+                                                marginBottom: '0.25rem',
+                                                textTransform: 'uppercase',
+                                                letterSpacing: '0.05em'
+                                            }}>
+                                                {speaker}
+                                            </div>
+                                            <div style={{
+                                                fontSize: '0.875rem',
+                                                color: 'var(--text-primary)',
+                                                lineHeight: '1.5'
+                                            }}>
+                                                {message}
+                                            </div>
+                                        </div>
+                                    );
+                                }
+
+                                // Fallback for unformatted lines
+                                return (
+                                    <div key={i} style={{
+                                        marginBottom: '0.5rem',
+                                        fontSize: '0.875rem',
+                                        color: 'var(--text-secondary)',
+                                        lineHeight: '1.5'
+                                    }}>
+                                        {trimmed}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="container" style={{ paddingTop: '2rem', paddingBottom: '2rem' }}>
             <div className="flex justify-between items-center mb-lg">
@@ -51,20 +184,32 @@ export default function AnalysisView() {
                         Detailed analysis of conversation transcripts
                     </p>
                 </div>
-                <button
-                    className="btn btn-primary"
-                    onClick={runAnalysis}
-                    disabled={analyzing}
-                >
-                    {analyzing ? (
-                        <>
-                            <div className="spinner" style={{ width: '20px', height: '20px', borderWidth: '2px' }}></div>
-                            Analyzing...
-                        </>
-                    ) : (
-                        '🔍 Run Analysis'
+                <div className="flex gap-sm">
+                    {selectedIds.size > 0 && (
+                        <button
+                            className="btn btn-primary"
+                            onClick={handleRunAIAnalysis}
+                            disabled={aiAnalyzing}
+                            style={{ background: 'var(--gradient-secondary)' }}
+                        >
+                            {aiAnalyzing ? '⏳ Starting AI...' : `🤖 AI Analyze (${selectedIds.size})`}
+                        </button>
                     )}
-                </button>
+                    <button
+                        className="btn btn-secondary"
+                        onClick={runAnalysis}
+                        disabled={analyzing}
+                    >
+                        {analyzing ? (
+                            <>
+                                <div className="spinner" style={{ width: '20px', height: '20px', borderWidth: '2px' }}></div>
+                                Analyzing...
+                            </>
+                        ) : (
+                            '🔍 Run Traditional Analysis'
+                        )}
+                    </button>
+                </div>
             </div>
 
             {error && (
@@ -109,6 +254,14 @@ export default function AnalysisView() {
                             <table>
                                 <thead>
                                     <tr>
+                                        <th style={{ width: '40px' }}>
+                                            <input
+                                                type="checkbox"
+                                                checked={results.length > 0 && selectedIds.size === results.length}
+                                                onChange={toggleSelectAll}
+                                                style={{ cursor: 'pointer' }}
+                                            />
+                                        </th>
                                         <th>Conversation ID</th>
                                         <th>Date</th>
                                         <th>Sentiment</th>
@@ -121,9 +274,30 @@ export default function AnalysisView() {
                                 </thead>
                                 <tbody>
                                     {results.map((result) => (
-                                        <tr key={result.id}>
+                                        <tr key={result.id} className={selectedIds.has(result.conversation_id) ? 'selected-row' : ''}>
+                                            <td>
+                                                <input
+                                                    type="checkbox"
+                                                    checked={selectedIds.has(result.conversation_id)}
+                                                    onChange={() => toggleSelection(result.conversation_id)}
+                                                    style={{ cursor: 'pointer' }}
+                                                />
+                                            </td>
                                             <td style={{ fontFamily: 'monospace', color: 'var(--accent-primary)' }}>
-                                                {result.conversation_id}
+                                                <button
+                                                    onClick={() => viewConversation(result.conversation_id)}
+                                                    style={{
+                                                        background: 'none',
+                                                        border: 'none',
+                                                        color: 'var(--accent-primary)',
+                                                        cursor: 'pointer',
+                                                        textDecoration: 'underline',
+                                                        fontFamily: 'monospace',
+                                                        fontSize: 'inherit'
+                                                    }}
+                                                >
+                                                    {result.conversation_id}
+                                                </button>
                                             </td>
                                             <td>{result.conversation_date || 'N/A'}</td>
                                             <td>

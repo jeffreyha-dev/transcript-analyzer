@@ -2,7 +2,9 @@ import { useState } from 'react';
 import Dashboard from './components/Dashboard';
 import Upload from './components/Upload';
 import AnalysisView from './components/AnalysisView';
+import AIAnalysisView from './components/AIAnalysisView';
 import ExportView from './components/ExportView';
+import SettingsView from './components/SettingsView';
 import './index.css';
 
 function App() {
@@ -55,10 +57,22 @@ function App() {
                 🔍 Analysis
               </button>
               <button
+                className={`btn ${currentView === 'ai-analysis' ? 'btn-primary' : 'btn-secondary'}`}
+                onClick={() => setCurrentView('ai-analysis')}
+              >
+                🤖 AI Analysis
+              </button>
+              <button
                 className={`btn ${currentView === 'export' ? 'btn-primary' : 'btn-secondary'}`}
                 onClick={() => setCurrentView('export')}
               >
                 ⬇️ Export
+              </button>
+              <button
+                className={`btn ${currentView === 'settings' ? 'btn-primary' : 'btn-secondary'}`}
+                onClick={() => setCurrentView('settings')}
+              >
+                ⚙️ Settings
               </button>
             </div>
           </div>
@@ -70,7 +84,9 @@ function App() {
         {currentView === 'dashboard' && <Dashboard />}
         {currentView === 'upload' && <Upload />}
         {currentView === 'analysis' && <AnalysisView />}
+        {currentView === 'ai-analysis' && <AIAnalysisView />}
         {currentView === 'export' && <ExportView />}
+        {currentView === 'settings' && <SettingsView />}
       </main>
 
       {/* Footer */}
