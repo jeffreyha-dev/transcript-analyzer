@@ -2,6 +2,7 @@ import express from 'express';
 import multer from 'multer';
 import { runQuery, getAll, getOne } from '../database.js';
 import { promises as fs } from 'fs';
+import { parse } from 'csv-parse/sync';
 
 const router = express.Router();
 
@@ -20,6 +21,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
 
         // Read file content
         const fileContent = await fs.readFile(req.file.path, 'utf-8');
+        const fieldMapping = req.body.fieldMapping ? JSON.parse(req.body.fieldMapping) : null;
 
         // Parse conversations
         let conversations = [];
@@ -29,8 +31,25 @@ router.post('/upload', upload.single('file'), async (req, res) => {
             const jsonData = JSON.parse(fileContent);
             conversations = Array.isArray(jsonData) ? jsonData : [jsonData];
         } catch (e) {
-            // Parse as text format (one conversation per section, separated by blank lines or delimiters)
-            conversations = parseTextFormat(fileContent);
+            // Try CSV format
+            try {
+                // Heuristic: check if it looks like CSV (has commas and newlines)
+                // But we can just try parsing
+                const records = parse(fileContent, {
+                    columns: true,
+                    skip_empty_lines: true,
+                    relax_quotes: true
+                });
+
+                if (records.length > 0) {
+                    conversations = records;
+                } else {
+                    throw new Error('No records found');
+                }
+            } catch (csvError) {
+                // Fallback to text format
+                conversations = parseTextFormat(fileContent, fieldMapping);
+            }
         }
 
         // Insert conversations into database
@@ -39,11 +58,43 @@ router.post('/upload', upload.single('file'), async (req, res) => {
 
         for (const conv of conversations) {
             try {
-                const conversationId = conv.conversation_id || `conv_${Date.now()}_${inserted}`;
-                const transcriptDetails = typeof conv.transcript_details === 'string'
-                    ? conv.transcript_details
-                    : JSON.stringify(conv.transcript_details);
-                const conversationDate = conv.conversation_date || conv.date || null;
+                // Apply mapping if provided, otherwise use default keys
+                const mapping = fieldMapping || {
+                    id: 'conversation_id',
+                    transcript: 'transcript_details',
+                    date: 'conversation_date'
+                };
+
+                // Helper to get value from object using mapped key
+                const getValue = (obj, key) => {
+                    if (!key) return null;
+                    return obj[key] || obj[key.toLowerCase()] || null;
+                };
+
+                // Extract values using mapping
+                // For default mapping, we also check fallback keys (e.g. 'date' for conversation_date)
+                let conversationId, transcriptDetails, conversationDate;
+
+                if (fieldMapping) {
+                    conversationId = getValue(conv, mapping.id);
+                    transcriptDetails = getValue(conv, mapping.transcript);
+                    conversationDate = getValue(conv, mapping.date);
+                } else {
+                    // Default behavior with fallbacks
+                    conversationId = conv.conversation_id;
+                    transcriptDetails = conv.transcript_details;
+                    conversationDate = conv.conversation_date || conv.date;
+                }
+
+                // Generate ID if missing
+                if (!conversationId) {
+                    conversationId = `conv_${Date.now()}_${inserted}`;
+                }
+
+                // Ensure transcript is string
+                if (typeof transcriptDetails !== 'string') {
+                    transcriptDetails = JSON.stringify(transcriptDetails);
+                }
 
                 await runQuery(
                     `INSERT INTO conversations (conversation_id, transcript_details, conversation_date) 
@@ -52,7 +103,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
                 );
                 inserted++;
             } catch (err) {
-                errors.push({ conversation: conv.conversation_id, error: err.message });
+                errors.push({ conversation: conv.conversation_id || 'unknown', error: err.message });
             }
         }
 
@@ -78,7 +129,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
  */
 router.post('/bulk', async (req, res) => {
     try {
-        const { conversations } = req.body;
+        const { conversations, fieldMapping } = req.body;
 
         if (!conversations || !Array.isArray(conversations)) {
             return res.status(400).json({ error: 'Invalid format. Expected { conversations: [...] }' });
@@ -89,11 +140,42 @@ router.post('/bulk', async (req, res) => {
 
         for (const conv of conversations) {
             try {
-                const conversationId = conv.conversation_id || `conv_${Date.now()}_${inserted}`;
-                const transcriptDetails = typeof conv.transcript_details === 'string'
-                    ? conv.transcript_details
-                    : JSON.stringify(conv.transcript_details);
-                const conversationDate = conv.conversation_date || conv.date || null;
+                // Apply mapping if provided, otherwise use default keys
+                const mapping = fieldMapping || {
+                    id: 'conversation_id',
+                    transcript: 'transcript_details',
+                    date: 'conversation_date'
+                };
+
+                // Helper to get value from object using mapped key
+                const getValue = (obj, key) => {
+                    if (!key) return null;
+                    return obj[key] || obj[key.toLowerCase()] || null;
+                };
+
+                // Extract values using mapping
+                let conversationId, transcriptDetails, conversationDate;
+
+                if (fieldMapping) {
+                    conversationId = getValue(conv, mapping.id);
+                    transcriptDetails = getValue(conv, mapping.transcript);
+                    conversationDate = getValue(conv, mapping.date);
+                } else {
+                    // Default behavior with fallbacks
+                    conversationId = conv.conversation_id;
+                    transcriptDetails = conv.transcript_details;
+                    conversationDate = conv.conversation_date || conv.date;
+                }
+
+                // Generate ID if missing
+                if (!conversationId) {
+                    conversationId = `conv_${Date.now()}_${inserted}`;
+                }
+
+                // Ensure transcript is string
+                if (typeof transcriptDetails !== 'string') {
+                    transcriptDetails = JSON.stringify(transcriptDetails);
+                }
 
                 await runQuery(
                     `INSERT INTO conversations (conversation_id, transcript_details, conversation_date) 
@@ -102,7 +184,7 @@ router.post('/bulk', async (req, res) => {
                 );
                 inserted++;
             } catch (err) {
-                errors.push({ conversation: conv.conversation_id, error: err.message });
+                errors.push({ conversation: conv.conversation_id || 'unknown', error: err.message });
             }
         }
 
@@ -214,7 +296,10 @@ router.delete('/:id', async (req, res) => {
 /**
  * Helper: Parse text format conversations
  */
-function parseTextFormat(text) {
+/**
+ * Helper: Parse text format conversations
+ */
+function parseTextFormat(text, fieldMapping = null) {
     const conversations = [];
 
     // Split by common delimiters
@@ -226,17 +311,33 @@ function parseTextFormat(text) {
         let conversationDate = null;
         let transcript = [];
 
+        // Determine keys to look for
+        const idKey = fieldMapping?.id || 'conversation_id';
+        const dateKey = fieldMapping?.date || 'date';
+
+        // Create regex for dynamic keys
+        // Escape special regex characters in keys
+        const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const idRegex = new RegExp(`^${escapeRegex(idKey)}[:\\s]+(.+)`, 'i');
+        const dateRegex = new RegExp(`^${escapeRegex(dateKey)}[:\\s]+(.+)`, 'i');
+
         for (const line of lines) {
-            // Look for conversation_id
-            if (line.match(/conversation_id[:\s]+(.+)/i)) {
-                conversationId = line.match(/conversation_id[:\s]+(.+)/i)[1].trim();
+            // Look for conversation_id (or mapped key)
+            const idMatch = line.match(idRegex);
+            if (idMatch) {
+                conversationId = idMatch[1].trim();
+                continue;
             }
-            // Look for date
-            else if (line.match(/date[:\s]+(.+)/i)) {
-                conversationDate = line.match(/date[:\s]+(.+)/i)[1].trim();
+
+            // Look for date (or mapped key)
+            const dateMatch = line.match(dateRegex);
+            if (dateMatch) {
+                conversationDate = dateMatch[1].trim();
+                continue;
             }
+
             // Otherwise, it's part of the transcript
-            else if (line.trim()) {
+            if (line.trim()) {
                 transcript.push(line.trim());
             }
         }

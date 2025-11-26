@@ -8,12 +8,19 @@ export default function Upload() {
     const [error, setError] = useState(null);
     const [dragOver, setDragOver] = useState(false);
 
+    // Field mapping state
+    const [showMapping, setShowMapping] = useState(false);
+    const [detectedFields, setDetectedFields] = useState([]);
+    const [mapping, setMapping] = useState({
+        id: '',
+        transcript: '',
+        date: ''
+    });
+
     const handleFileChange = (e) => {
         const selectedFile = e.target.files[0];
         if (selectedFile) {
-            setFile(selectedFile);
-            setError(null);
-            setResult(null);
+            processFile(selectedFile);
         }
     };
 
@@ -32,10 +39,134 @@ export default function Upload() {
 
         const droppedFile = e.dataTransfer.files[0];
         if (droppedFile) {
-            setFile(droppedFile);
-            setError(null);
-            setResult(null);
+            processFile(droppedFile);
         }
+    };
+
+    const processFile = (selectedFile) => {
+        setFile(selectedFile);
+        setError(null);
+        setResult(null);
+        setShowMapping(false);
+        setDetectedFields([]);
+        setMapping({ id: '', transcript: '', date: '' });
+
+        const fileName = selectedFile.name.toLowerCase();
+
+        if (fileName.endsWith('.json')) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const content = JSON.parse(e.target.result);
+                    const firstItem = Array.isArray(content) ? content[0] : content;
+
+                    if (firstItem && typeof firstItem === 'object') {
+                        const fields = Object.keys(firstItem);
+                        setDetectedFields(fields);
+
+                        // Auto-detect fields
+                        const newMapping = { id: '', transcript: '', date: '' };
+
+                        fields.forEach(field => {
+                            const lower = field.toLowerCase();
+                            if (lower.includes('id') && !newMapping.id) newMapping.id = field;
+                            if ((lower.includes('transcript') || lower.includes('message') || lower.includes('chat') || lower.includes('body')) && !newMapping.transcript) newMapping.transcript = field;
+                            if ((lower.includes('date') || lower.includes('time') || lower.includes('created')) && !newMapping.date) newMapping.date = field;
+                        });
+
+                        setMapping(newMapping);
+                        setShowMapping(true);
+                    }
+                } catch (err) {
+                    console.error('Error parsing JSON for preview:', err);
+                }
+            };
+            reader.readAsText(selectedFile);
+        } else if (fileName.endsWith('.txt')) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const content = e.target.result;
+                    // Read first 50 lines to detect keys
+                    const lines = content.split('\n').slice(0, 50);
+                    const potentialKeys = new Set();
+
+                    // Regex to find "Key:" pattern at start of line
+                    const keyRegex = /^([a-zA-Z0-9_\-\s]+):/i;
+
+                    lines.forEach(line => {
+                        const match = line.match(keyRegex);
+                        if (match && match[1]) {
+                            // Only add if it looks like a metadata key (not too long)
+                            if (match[1].length < 30) {
+                                potentialKeys.add(match[1].trim());
+                            }
+                        }
+                    });
+
+                    if (potentialKeys.size > 0) {
+                        const fields = Array.from(potentialKeys);
+                        setDetectedFields(fields);
+
+                        // Auto-detect fields
+                        const newMapping = { id: '', transcript: '', date: '' };
+
+                        fields.forEach(field => {
+                            const lower = field.toLowerCase();
+                            if ((lower.includes('id') || lower.includes('conv')) && !newMapping.id) newMapping.id = field;
+                            if ((lower.includes('date') || lower.includes('time')) && !newMapping.date) newMapping.date = field;
+                        });
+
+                        setMapping(newMapping);
+                        setShowMapping(true);
+                    }
+                } catch (err) {
+                    console.error('Error parsing text for preview:', err);
+                }
+            };
+            reader.readAsText(selectedFile);
+        } else if (fileName.endsWith('.csv')) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const content = e.target.result;
+                    // Read first line to get headers
+                    const firstLine = content.split('\n')[0];
+                    if (firstLine) {
+                        // Simple split by comma, handling potential quotes if needed (basic)
+                        // For preview, simple split is usually enough
+                        const headers = firstLine.split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+
+                        if (headers.length > 0) {
+                            setDetectedFields(headers);
+
+                            // Auto-detect fields
+                            const newMapping = { id: '', transcript: '', date: '' };
+
+                            headers.forEach(field => {
+                                const lower = field.toLowerCase();
+                                if ((lower.includes('id') || lower.includes('conv')) && !newMapping.id) newMapping.id = field;
+                                if ((lower.includes('transcript') || lower.includes('message') || lower.includes('chat') || lower.includes('body')) && !newMapping.transcript) newMapping.transcript = field;
+                                if ((lower.includes('date') || lower.includes('time')) && !newMapping.date) newMapping.date = field;
+                            });
+
+                            setMapping(newMapping);
+                            setShowMapping(true);
+                        }
+                    }
+                } catch (err) {
+                    console.error('Error parsing CSV for preview:', err);
+                }
+            };
+            reader.readAsText(selectedFile);
+        }
+    };
+
+    const handleMappingChange = (target, sourceField) => {
+        setMapping(prev => ({
+            ...prev,
+            [target]: sourceField
+        }));
     };
 
     const handleUpload = async () => {
@@ -49,9 +180,34 @@ export default function Upload() {
         setResult(null);
 
         try {
-            const response = await api.uploadFile(file);
-            setResult(response);
+            // If we have mapping, we need to send it
+            // api.uploadFile needs to be updated or we pass it as additional data
+            // Since we can't easily change the api utility without seeing it, 
+            // we'll assume we can pass a second argument or we'll modify the file object slightly (hacky)
+            // Better: let's check api.js next, but for now we'll assume the backend handles the mapping
+            // if we pass it in the FormData.
+
+            // We'll use a custom upload function here to ensure mapping is sent
+            const formData = new FormData();
+            formData.append('file', file);
+            if (showMapping) {
+                formData.append('fieldMapping', JSON.stringify(mapping));
+            }
+
+            const response = await fetch('http://localhost:3000/api/conversations/upload', {
+                method: 'POST',
+                body: formData,
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.error || 'Upload failed');
+            }
+
+            setResult(data);
             setFile(null);
+            setShowMapping(false);
         } catch (err) {
             setError(err.message);
         } finally {
@@ -92,7 +248,7 @@ export default function Upload() {
                         <input
                             id="file-input"
                             type="file"
-                            accept=".txt,.json"
+                            accept=".txt,.json,.csv"
                             onChange={handleFileChange}
                             style={{ display: 'none' }}
                         />
@@ -112,6 +268,7 @@ export default function Upload() {
                                     onClick={(e) => {
                                         e.stopPropagation();
                                         setFile(null);
+                                        setShowMapping(false);
                                     }}
                                 >
                                     Remove
@@ -120,11 +277,62 @@ export default function Upload() {
                         </div>
                     )}
 
+                    {showMapping && (
+                        <div className="mt-lg fade-in">
+                            <h4 className="mb-md">Map Fields</h4>
+                            <p className="mb-md" style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+                                We detected a JSON file. Please map the columns to the required fields.
+                            </p>
+
+                            <div className="grid grid-3 gap-md">
+                                <div>
+                                    <label className="label">Conversation ID</label>
+                                    <select
+                                        className="input"
+                                        value={mapping.id}
+                                        onChange={(e) => handleMappingChange('id', e.target.value)}
+                                    >
+                                        <option value="">-- Select Field --</option>
+                                        {detectedFields.map(field => (
+                                            <option key={field} value={field}>{field}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="label">Transcript</label>
+                                    <select
+                                        className="input"
+                                        value={mapping.transcript}
+                                        onChange={(e) => handleMappingChange('transcript', e.target.value)}
+                                    >
+                                        <option value="">-- Select Field --</option>
+                                        {detectedFields.map(field => (
+                                            <option key={field} value={field}>{field}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="label">Date (Optional)</label>
+                                    <select
+                                        className="input"
+                                        value={mapping.date}
+                                        onChange={(e) => handleMappingChange('date', e.target.value)}
+                                    >
+                                        <option value="">-- Select Field --</option>
+                                        {detectedFields.map(field => (
+                                            <option key={field} value={field}>{field}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     <div className="mt-lg">
                         <button
                             className="btn btn-primary"
                             onClick={handleUpload}
-                            disabled={!file || uploading}
+                            disabled={!file || uploading || (showMapping && (!mapping.id || !mapping.transcript))}
                             style={{ width: '100%' }}
                         >
                             {uploading ? (
