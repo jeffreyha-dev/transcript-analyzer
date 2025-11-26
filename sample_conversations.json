@@ -1,0 +1,27 @@
+[
+    {
+        "conversation_id": "conv_001",
+        "conversation_date": "2025-11-26",
+        "transcript_details": "Agent: Hello! How can I assist you today?\nCustomer: Hi, I'm having trouble with my recent order. It hasn't arrived yet.\nAgent: I apologize for the inconvenience. Let me look into that for you right away.\nCustomer: Thank you, I really appreciate your help.\nAgent: I've checked your order status. It appears there was a delay at the shipping facility.\nCustomer: Oh, I see. When can I expect it?\nAgent: It should arrive within the next 2 business days. I've also applied a discount to your next purchase as an apology.\nCustomer: That's great! Thank you so much for resolving this quickly."
+    },
+    {
+        "conversation_id": "conv_002",
+        "conversation_date": "2025-11-25",
+        "transcript_details": "Agent: Good morning! What can I do for you today?\nCustomer: I need to return an item I purchased last week.\nAgent: Certainly! I can help you process that return. May I know the reason?\nCustomer: It doesn't fit properly.\nAgent: I understand. I'll send you a prepaid return label via email.\nCustomer: Perfect, thanks!\nAgent: You're welcome! Is there anything else I can help with?\nCustomer: No, that's all. Great service!"
+    },
+    {
+        "conversation_id": "conv_003",
+        "conversation_date": "2025-11-24",
+        "transcript_details": "Agent: Hi there! How may I help you?\nCustomer: I'm really frustrated. I've been trying to use this coupon code but it's not working.\nAgent: I'm sorry to hear that. Let me check the code for you.\nCustomer: It's been 10 minutes already!\nAgent: I apologize for the wait. The code appears to have expired yesterday.\nCustomer: This is terrible service. You should have notified me!\nAgent: You're absolutely right. I'll create a new code for you with an extended validity period.\nCustomer: Fine. I hope this works.\nAgent: I've sent the new code to your email. It's valid for 30 days.\nCustomer: Okay, thank you."
+    },
+    {
+        "conversation_id": "conv_004",
+        "conversation_date": "2025-11-23",
+        "transcript_details": "Agent: Welcome! How can I assist you today?\nCustomer: I have a question about your warranty policy.\nAgent: I'd be happy to explain our warranty policy. What would you like to know?\nCustomer: How long is the warranty period for electronics?\nAgent: Our electronics come with a standard 2-year warranty covering manufacturing defects.\nCustomer: That's excellent! What about accidental damage?\nAgent: Accidental damage can be covered with our extended protection plan.\nCustomer: Sounds good. How much does that cost?\nAgent: It varies by product, but typically ranges from $20-$50.\nCustomer: Perfect! I'll consider that. Thanks for the information."
+    },
+    {
+        "conversation_id": "conv_005",
+        "conversation_date": "2025-11-22",
+        "transcript_details": "Agent: Hello! Thank you for contacting us. How may I help?\nCustomer: Hi, I want to change my shipping address for an order.\nAgent: I can definitely help with that. Do you have your order number?\nCustomer: Yes, it's ORD-12345.\nAgent: Thank you. What's the new shipping address?\nCustomer: 123 Main Street, New York, NY 10001.\nAgent: I've updated your shipping address. The order will be delivered to the new address.\nCustomer: Wonderful! When will it arrive?\nAgent: Based on the updated address, delivery is estimated for November 28th.\nCustomer: Perfect timing! Thank you so much for your help."
+    }
+]
