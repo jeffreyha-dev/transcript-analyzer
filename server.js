@@ -5,6 +5,8 @@ import { initializeDatabase } from './database.js';
 import conversationsRouter from './routes/conversations.js';
 import analysisRouter from './routes/analysis.js';
 import aiAnalysisRouter from './routes/aiAnalysis.js';
+import settingsRouter from './routes/settings.js';
+import promptsRouter from './routes/prompts.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -18,6 +20,8 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use('/api/conversations', conversationsRouter);
 app.use('/api/analysis', analysisRouter);
 app.use('/api/ai-analysis', aiAnalysisRouter);
+app.use('/api/settings', settingsRouter);
+app.use('/api/prompts', promptsRouter);
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -51,6 +55,10 @@ app.use((err, req, res, next) => {
 async function startServer() {
     try {
         await initializeDatabase();
+
+        // Initialize AI Config
+        const { default: llmService } = await import('./llmService.js');
+        await llmService.reloadConfig();
 
         app.listen(PORT, () => {
             console.log(`\n🚀 Transcript Analyzer Server running on http://localhost:${PORT}`);

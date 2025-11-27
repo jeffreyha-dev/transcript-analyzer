@@ -1,6 +1,7 @@
 import sqlite3 from 'sqlite3';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import { prompts } from './prompts.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -125,6 +126,7 @@ export function initializeDatabase() {
           cost REAL,
           processing_time_ms INTEGER,
           analyzed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          custom_data TEXT,
           
           FOREIGN KEY (conversation_id) REFERENCES conversations(conversation_id) ON DELETE CASCADE
         )
@@ -160,8 +162,42 @@ export function initializeDatabase() {
           console.error('Error creating ai_settings table:', err);
           reject(err);
         } else {
-          console.log('Database schema initialized successfully');
-          resolve();
+          // Initialize AI Prompts table
+          db.run(`
+            CREATE TABLE IF NOT EXISTS ai_prompts (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              name TEXT NOT NULL,
+              description TEXT,
+              template TEXT NOT NULL,
+              is_active BOOLEAN DEFAULT 0,
+              is_default BOOLEAN DEFAULT 0,
+              created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+              updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+          `, async (err) => {
+            if (err) {
+              console.error('Error creating ai_prompts table:', err);
+              reject(err);
+            } else {
+              // Seed default prompt if table is empty
+              try {
+                const count = await getOne('SELECT COUNT(*) as count FROM ai_prompts');
+                if (count.count === 0) {
+                  console.log('Seeding default prompts...');
+                  await runQuery(
+                    `INSERT INTO ai_prompts (name, description, template, is_active, is_default)
+                     VALUES (?, ?, ?, 1, 1)`,
+                    ['Default Analysis', 'Standard comprehensive analysis prompt', prompts.combinedAnalysis('{{TRANSCRIPT}}')]
+                  );
+                }
+                console.log('Database schema initialized successfully');
+                resolve();
+              } catch (seedErr) {
+                console.error('Error seeding prompts:', seedErr);
+                resolve(); // Resolve anyway to not block startup
+              }
+            }
+          });
         }
       });
     });

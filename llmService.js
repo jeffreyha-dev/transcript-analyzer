@@ -2,7 +2,7 @@ import 'dotenv/config';
 import { Ollama } from 'ollama';
 import OpenAI from 'openai';
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { runQuery, getOne } from './database.js';
+import { runQuery, getOne, getAll } from './database.js';
 
 /**
  * LLM Service - Multi-provider support with cost tracking
@@ -12,12 +12,19 @@ import { runQuery, getOne } from './database.js';
 class LLMService {
     constructor() {
         // Configuration
+        // Initial Configuration (Defaults from env)
         this.config = {
             enabled: process.env.AI_ENABLED === 'true',
             primaryProvider: process.env.AI_PRIMARY_PROVIDER || 'ollama',
             fallbackEnabled: process.env.AI_FALLBACK_ENABLED === 'true',
             monthlyBudget: parseFloat(process.env.AI_MONTHLY_BUDGET || '10.00'),
             costAlertThreshold: parseFloat(process.env.AI_COST_ALERT_THRESHOLD || '8.00'),
+            ollamaBaseUrl: process.env.OLLAMA_BASE_URL || 'http://localhost:11434',
+            ollamaModel: process.env.OLLAMA_MODEL || 'llama3.1:8b',
+            openaiApiKey: process.env.OPENAI_API_KEY,
+            openaiModel: process.env.OPENAI_MODEL || 'gpt-3.5-turbo',
+            geminiApiKey: process.env.GEMINI_API_KEY,
+            geminiModel: process.env.GEMINI_MODEL || 'gemini-1.5-flash'
         };
 
         // Initialize providers
@@ -32,28 +39,63 @@ class LLMService {
         // Ollama (Primary)
         try {
             this.ollama = new Ollama({
-                host: process.env.OLLAMA_BASE_URL || 'http://localhost:11434'
+                host: this.config.ollamaBaseUrl
             });
-            this.ollamaModel = process.env.OLLAMA_MODEL || 'llama3.1:8b';
+            this.ollamaModel = this.config.ollamaModel;
             console.log('✓ Ollama initialized:', this.ollamaModel);
         } catch (error) {
             console.warn('⚠ Ollama initialization failed:', error.message);
         }
 
         // OpenAI (Fallback)
-        if (process.env.OPENAI_API_KEY) {
+        if (this.config.openaiApiKey) {
             this.openai = new OpenAI({
-                apiKey: process.env.OPENAI_API_KEY
+                apiKey: this.config.openaiApiKey
             });
-            this.openaiModel = process.env.OPENAI_MODEL || 'gpt-3.5-turbo';
+            this.openaiModel = this.config.openaiModel;
             console.log('✓ OpenAI initialized:', this.openaiModel);
         }
 
         // Google Gemini (Fallback)
-        if (process.env.GEMINI_API_KEY) {
-            this.gemini = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-            this.geminiModel = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
+        if (this.config.geminiApiKey) {
+            this.gemini = new GoogleGenerativeAI(this.config.geminiApiKey);
+            this.geminiModel = this.config.geminiModel;
             console.log('✓ Gemini initialized:', this.geminiModel);
+        }
+    }
+
+    async reloadConfig() {
+        try {
+            const settings = await getAll('SELECT * FROM ai_settings');
+
+            if (settings && settings.length > 0) {
+                const dbConfig = {};
+                settings.forEach(s => {
+                    dbConfig[s.setting_key] = s.setting_value;
+                });
+
+                // Update config with DB values, falling back to existing/env defaults
+                this.config = {
+                    ...this.config,
+                    enabled: dbConfig.AI_ENABLED === 'true',
+                    primaryProvider: dbConfig.AI_PRIMARY_PROVIDER || this.config.primaryProvider,
+                    fallbackEnabled: dbConfig.AI_FALLBACK_ENABLED === 'true',
+                    monthlyBudget: parseFloat(dbConfig.AI_MONTHLY_BUDGET || this.config.monthlyBudget),
+                    costAlertThreshold: parseFloat(dbConfig.AI_COST_ALERT_THRESHOLD || this.config.costAlertThreshold),
+                    ollamaBaseUrl: dbConfig.OLLAMA_BASE_URL || this.config.ollamaBaseUrl,
+                    ollamaModel: dbConfig.OLLAMA_MODEL || this.config.ollamaModel,
+                    openaiApiKey: dbConfig.OPENAI_API_KEY || this.config.openaiApiKey,
+                    openaiModel: dbConfig.OPENAI_MODEL || this.config.openaiModel,
+                    geminiApiKey: dbConfig.GEMINI_API_KEY || this.config.geminiApiKey,
+                    geminiModel: dbConfig.GEMINI_MODEL || this.config.geminiModel
+                };
+                console.log('✓ AI Configuration reloaded from database');
+            }
+
+            // Re-initialize providers with new config
+            this.initializeProviders();
+        } catch (error) {
+            console.error('Failed to reload config:', error);
         }
     }
 

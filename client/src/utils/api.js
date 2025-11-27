@@ -133,6 +133,54 @@ class APIClient {
     async getAIStats() {
         return this.request('/ai-analysis/stats');
     }
+    async getSettings() {
+        return this.request('/settings');
+    }
+
+    async updateSettings(settings) {
+        return this.request('/settings', {
+            method: 'PUT',
+            body: JSON.stringify(settings)
+        });
+    }
+
+    // Prompts
+    async getPrompts() {
+        return this.request('/prompts');
+    }
+
+    async getActivePrompt() {
+        return this.request('/prompts/active');
+    }
+
+    async createPrompt(prompt) {
+        return this.request('/prompts', {
+            method: 'POST',
+            body: JSON.stringify(prompt)
+        });
+    }
+
+    async updatePrompt(id, prompt) {
+        return this.request(`/prompts/${id}`, {
+            method: 'PUT',
+            body: JSON.stringify(prompt)
+        });
+    }
+
+    async activatePrompt(id) {
+        return this.request(`/prompts/${id}/activate`, { method: 'POST' });
+    }
+
+    async resetPrompt() {
+        return this.request('/prompts/reset', { method: 'POST' });
+    }
+
+    async generatePrompt(description) {
+        return this.request('/prompts/generate', {
+            method: 'POST',
+            body: JSON.stringify({ description })
+        });
+    }
 }
 
 export default new APIClient();

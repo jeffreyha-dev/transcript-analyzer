@@ -247,6 +247,152 @@ export default function AIAnalysisView() {
                             </div>
                         </section>
 
+                        {/* Custom Insights (Dynamic Fields) */}
+                        {selectedConversation.custom_data && (() => {
+                            const customData = JSON.parse(selectedConversation.custom_data);
+
+                            const renderValue = (value, key = '') => {
+                                // Handle null/undefined
+                                if (value === null || value === undefined) {
+                                    return <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>N/A</span>;
+                                }
+
+                                // Handle booleans
+                                if (typeof value === 'boolean') {
+                                    return <span className={`badge ${value ? 'badge-success' : 'badge-warning'}`}>
+                                        {value ? '✓' : '✗'}
+                                    </span>;
+                                }
+
+                                // Handle numbers (scores)
+                                if (typeof value === 'number') {
+                                    // If it looks like a score (0-100 or 0-1)
+                                    if ((value >= 0 && value <= 100) || (value >= 0 && value <= 1)) {
+                                        const score = value <= 1 ? value * 100 : value;
+                                        return (
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                                                <div style={{
+                                                    flex: 1,
+                                                    height: '8px',
+                                                    background: 'var(--bg-primary)',
+                                                    borderRadius: '4px',
+                                                    overflow: 'hidden'
+                                                }}>
+                                                    <div style={{
+                                                        width: `${score}%`,
+                                                        height: '100%',
+                                                        background: getScoreColor(score),
+                                                        transition: 'width 0.3s ease'
+                                                    }}></div>
+                                                </div>
+                                                <span style={{
+                                                    fontWeight: '600',
+                                                    color: getScoreColor(score),
+                                                    minWidth: '3rem',
+                                                    textAlign: 'right'
+                                                }}>
+                                                    {Math.round(score)}
+                                                </span>
+                                            </div>
+                                        );
+                                    }
+                                    return <span style={{ fontWeight: '500' }}>{value}</span>;
+                                }
+
+                                // Handle strings
+                                if (typeof value === 'string') {
+                                    return <span style={{ color: 'var(--text-primary)' }}>{value}</span>;
+                                }
+
+                                // Handle arrays
+                                if (Array.isArray(value)) {
+                                    if (value.length === 0) {
+                                        return <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>None</span>;
+                                    }
+                                    return (
+                                        <ul style={{ margin: '0.5rem 0', paddingLeft: '1.5rem' }}>
+                                            {value.map((item, i) => (
+                                                <li key={i} style={{ marginBottom: '0.25rem', color: 'var(--text-secondary)' }}>
+                                                    {typeof item === 'object' ? JSON.stringify(item) : String(item)}
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    );
+                                }
+
+                                // Handle objects
+                                if (typeof value === 'object') {
+                                    return (
+                                        <div style={{
+                                            marginLeft: '1rem',
+                                            paddingLeft: '1rem',
+                                            borderLeft: '2px solid var(--border-color)',
+                                            marginTop: '0.5rem'
+                                        }}>
+                                            {Object.entries(value).map(([k, v]) => (
+                                                <div key={k} style={{ marginBottom: '0.75rem' }}>
+                                                    <div style={{
+                                                        fontSize: '0.875rem',
+                                                        color: 'var(--text-secondary)',
+                                                        marginBottom: '0.25rem',
+                                                        textTransform: 'capitalize'
+                                                    }}>
+                                                        {k.replace(/_/g, ' ')}
+                                                    </div>
+                                                    {renderValue(v, k)}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    );
+                                }
+
+                                return String(value);
+                            };
+
+                            const getFieldIcon = (key) => {
+                                const lowerKey = key.toLowerCase();
+                                if (lowerKey.includes('score') || lowerKey.includes('quality')) return '📊';
+                                if (lowerKey.includes('risk') || lowerKey.includes('violation')) return '⚠️';
+                                if (lowerKey.includes('sentiment') || lowerKey.includes('emotion')) return '😊';
+                                if (lowerKey.includes('intent') || lowerKey.includes('category')) return '🎯';
+                                if (lowerKey.includes('performance') || lowerKey.includes('agent')) return '👤';
+                                if (lowerKey.includes('customer') || lowerKey.includes('journey')) return '🛤️';
+                                if (lowerKey.includes('summary') || lowerKey.includes('key')) return '📝';
+                                return '✨';
+                            };
+
+                            return (
+                                <section style={{ marginTop: '2rem' }}>
+                                    <h3 style={{ fontSize: '1.125rem', marginBottom: '0.75rem' }}>✨ Custom Insights</h3>
+                                    <div style={{ display: 'grid', gap: '1rem' }}>
+                                        {Object.entries(customData).map(([key, value]) => (
+                                            <div key={key} style={{
+                                                background: 'var(--bg-tertiary)',
+                                                border: '1px solid var(--border-color)',
+                                                borderRadius: 'var(--radius-md)',
+                                                padding: '1.25rem'
+                                            }}>
+                                                <h4 style={{
+                                                    fontSize: '1rem',
+                                                    marginBottom: '1rem',
+                                                    color: 'var(--text-primary)',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '0.5rem'
+                                                }}>
+                                                    <span>{getFieldIcon(key)}</span>
+                                                    <span style={{ textTransform: 'capitalize' }}>
+                                                        {key.replace(/_/g, ' ')}
+                                                    </span>
+                                                </h4>
+                                                {renderValue(value, key)}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </section>
+                            );
+                        })()}
+
                         {/* Full Transcript */}
                         {selectedConversation.transcript_details && (
                             <section style={{ marginTop: '2rem' }}>

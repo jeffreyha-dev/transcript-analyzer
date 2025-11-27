@@ -63,8 +63,8 @@ router.post('/run', async (req, res) => {
                         best_practice_suggestions,
                         churn_risk_score, customer_personality, lifetime_value_indicator, 
                         intervention_suggestions,
-                        provider_used, tokens_used, cost, processing_time_ms
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        provider_used, tokens_used, cost, processing_time_ms, custom_data
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 `, [
                     results.conversation_id,
                     results.summary,
@@ -97,7 +97,8 @@ router.post('/run', async (req, res) => {
                     results.provider_used,
                     results.tokens_used,
                     results.cost,
-                    results.processing_time_ms
+                    results.processing_time_ms,
+                    results.custom_data
                 ]);
 
                 analyzed++;
@@ -225,6 +226,7 @@ router.get('/summary/:id', async (req, res) => {
             risk_flags: JSON.parse(result.risk_flags || '[]'),
             best_practice_suggestions: JSON.parse(result.best_practice_suggestions || '[]'),
             intervention_suggestions: JSON.parse(result.intervention_suggestions || '[]'),
+            custom_data: result.custom_data || null,
         };
 
         res.json(parsed);
