@@ -110,7 +110,18 @@ Stores AI configuration settings.
 | setting_value | TEXT NOT NULL | Setting value |
 | updated_at | DATETIME | Last update timestamp |
 
-#### 6. `ai_prompts`
+#### 6. `analysis_config`
+Stores configuration for analysis algorithms.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | INTEGER PRIMARY KEY | Auto-increment ID |
+| config_key | TEXT UNIQUE NOT NULL | Config key (e.g., sentiment_keywords) |
+| config_value | TEXT NOT NULL | Config value (JSON string) |
+| config_type | TEXT NOT NULL | Config type (sentiment/topic/performance/keywords) |
+| updated_at | DATETIME | Last update timestamp |
+
+#### 7. `ai_prompts`
 Manages AI prompt templates.
 
 | Column | Type | Description |
@@ -124,7 +135,7 @@ Manages AI prompt templates.
 | created_at | DATETIME | Creation timestamp |
 | updated_at | DATETIME | Last update timestamp |
 
-#### 7. `metric_configs`
+#### 8. `metric_configs`
 Configures custom metric scoring and colors.
 
 | Column | Type | Description |
@@ -143,7 +154,7 @@ Configures custom metric scoring and colors.
 - **CSAT**: 1-5, thresholds: [≤2: red, ≤4: yellow, ≤5: green]
 - **churnRiskScore**: 0-100 (reverse), thresholds: [≤30: green, ≤70: yellow, ≤100: red]
 
-#### 8. `metrics`
+#### 9. `metrics`
 General metrics storage.
 
 | Column | Type | Description |

@@ -114,6 +114,15 @@ CREATE TABLE ai_settings (
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Analysis Config Table
+CREATE TABLE analysis_config (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    config_key TEXT UNIQUE NOT NULL,
+    config_value TEXT NOT NULL,
+    config_type TEXT NOT NULL,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
 -- AI Prompts Table
 CREATE TABLE ai_prompts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

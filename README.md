@@ -138,6 +138,45 @@ Use the **Export** tab to download analysis results in:
 - `GET /api/analysis/dashboard` - Get dashboard metrics
 - `GET /api/analysis/export?format=json|csv` - Export results
 
+### AI Analysis Endpoints
+
+- `POST /api/ai-analysis/run` - Run AI analysis on conversations
+- `GET /api/ai-analysis/results` - Get AI analysis results (paginated, with filters)
+- `GET /api/ai-analysis/summary/:id` - Get detailed AI analysis for a specific conversation
+- `GET /api/ai-analysis/insights` - Get aggregated AI insights
+- `GET /api/ai-analysis/costs` - Get cost tracking data
+- `GET /api/ai-analysis/stats` - Get dashboard statistics
+
+### Analysis Configuration Endpoints
+
+- `GET /api/analysis-config` - Get all analysis configurations
+- `GET /api/analysis-config/:type` - Get config by type (sentiment, topic, etc.)
+- `PUT /api/analysis-config` - Update analysis configuration
+- `POST /api/analysis-config/reset` - Reset configuration to defaults
+
+### Metric Configuration Endpoints
+
+- `GET /api/metric-configs` - Get all metric configurations
+- `GET /api/metric-configs/:name` - Get specific metric config
+- `POST /api/metric-configs` - Create or update metric config
+- `DELETE /api/metric-configs/:name` - Delete metric config
+
+### AI Prompts Endpoints
+
+- `GET /api/prompts` - Get all prompts
+- `GET /api/prompts/active` - Get active prompt
+- `POST /api/prompts` - Create new prompt
+- `PUT /api/prompts/:id` - Update prompt
+- `POST /api/prompts/:id/activate` - Activate prompt
+- `POST /api/prompts/reset` - Reset to default prompt
+- `DELETE /api/prompts/:id` - Delete prompt
+- `POST /api/prompts/generate` - Generate prompt template using AI
+
+### Settings Endpoints
+
+- `GET /api/settings` - Get all AI settings
+- `PUT /api/settings` - Update AI settings
+
 ## Sample Data
 
 Create a file `sample_conversations.json`:
