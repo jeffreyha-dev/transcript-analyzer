@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import api from '../utils/api';
+import { useAnalysis } from '../context/AnalysisContext';
 
 export default function AnalysisView() {
     const [results, setResults] = useState([]);
@@ -11,7 +12,8 @@ export default function AnalysisView() {
     const [error, setError] = useState(null);
     const [selectedConversation, setSelectedConversation] = useState(null);
     const [selectedIds, setSelectedIds] = useState(new Set());
-    const [aiAnalyzing, setAiAnalyzing] = useState(false);
+
+    const { isAnalyzing, startAnalysis } = useAnalysis();
 
     useEffect(() => {
         loadResults();
@@ -53,15 +55,11 @@ export default function AnalysisView() {
         if (selectedIds.size === 0) return;
 
         try {
-            setAiAnalyzing(true);
-            setError(null);
-            const response = await api.runAIAnalysis(Array.from(selectedIds));
-            alert(`AI Analysis initiated for ${response.analyzed} conversations! Check the AI Analysis tab for results.`);
+            await startAnalysis(Array.from(selectedIds));
+            alert(`AI Analysis initiated for ${selectedIds.size} conversations! Check the AI Analysis tab for results.`);
             setSelectedIds(new Set());
         } catch (err) {
             setError(err.message);
-        } finally {
-            setAiAnalyzing(false);
         }
     };
 
@@ -189,10 +187,10 @@ export default function AnalysisView() {
                         <button
                             className="btn btn-primary"
                             onClick={handleRunAIAnalysis}
-                            disabled={aiAnalyzing}
+                            disabled={isAnalyzing}
                             style={{ background: 'var(--gradient-secondary)' }}
                         >
-                            {aiAnalyzing ? '⏳ Starting AI...' : `🤖 AI Analyze (${selectedIds.size})`}
+                            {isAnalyzing ? '⏳ Starting AI...' : `🤖 AI Analyze (${selectedIds.size})`}
                         </button>
                     )}
                     <button

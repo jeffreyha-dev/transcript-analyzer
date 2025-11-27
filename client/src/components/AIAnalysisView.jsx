@@ -1,22 +1,30 @@
 import { useState, useEffect } from 'react';
 import api from '../utils/api';
+import { useAnalysis } from '../context/AnalysisContext';
 
 export default function AIAnalysisView() {
     const [results, setResults] = useState([]);
     const [loading, setLoading] = useState(false);
-    const [analyzing, setAnalyzing] = useState(false);
     const [page, setPage] = useState(1);
     const [pagination, setPagination] = useState(null);
     const [filters, setFilters] = useState({});
     const [error, setError] = useState(null);
     const [selectedConversation, setSelectedConversation] = useState(null);
-    const [analysisProgress, setAnalysisProgress] = useState(null);
     const [metricConfigs, setMetricConfigs] = useState([]);
+
+    const { isAnalyzing, progress, startAnalysis, lastAnalysisResult } = useAnalysis();
 
     useEffect(() => {
         loadResults();
         loadMetricConfigs();
     }, [page, filters]);
+
+    // Reload results when analysis completes
+    useEffect(() => {
+        if (lastAnalysisResult) {
+            loadResults();
+        }
+    }, [lastAnalysisResult]);
 
     const loadMetricConfigs = async () => {
         try {
@@ -43,58 +51,9 @@ export default function AIAnalysisView() {
 
     const runAnalysis = async () => {
         try {
-            setAnalyzing(true);
-            setError(null);
-
-            // Get initial stats to determine total work
-            const initialStats = await api.getAIStats();
-            const batchSize = Math.min(initialStats.unanalyzedCount, 100); // API limit is 100
-            const startCount = initialStats.totalAnalyzed;
-            const targetTotal = startCount + batchSize;
-
-            setAnalysisProgress({
-                analyzed: startCount,
-                total: targetTotal,
-                current: 0,
-                target: batchSize
-            });
-
-            // Start polling for progress
-            const pollInterval = setInterval(async () => {
-                try {
-                    const stats = await api.getAIStats();
-                    setAnalysisProgress(prev => ({
-                        ...prev,
-                        analyzed: stats.totalAnalyzed,
-                        current: stats.totalAnalyzed - startCount
-                    }));
-                } catch (err) {
-                    // Ignore polling errors
-                }
-            }, 2000);
-
-            const response = await api.runAIAnalysis();
-
-            clearInterval(pollInterval);
-
-            // Final update
-            setAnalysisProgress({
-                analyzed: response.analyzed + startCount,
-                total: targetTotal,
-                current: response.analyzed,
-                target: batchSize
-            });
-
-            setTimeout(() => {
-                alert(`AI Analysis complete! Analyzed ${response.analyzed} conversations.`);
-                setAnalysisProgress(null);
-                loadResults();
-            }, 1000);
+            await startAnalysis();
         } catch (err) {
             setError(err.message);
-            setAnalysisProgress(null);
-        } finally {
-            setAnalyzing(false);
         }
     };
 
@@ -509,10 +468,10 @@ export default function AIAnalysisView() {
                         </div>
                         <button
                             onClick={runAnalysis}
-                            disabled={analyzing}
+                            disabled={isAnalyzing}
                             className="btn btn-primary"
                         >
-                            {analyzing ? '⏳ Analyzing...' : '▶ Run AI Analysis'}
+                            {isAnalyzing ? '⏳ Analyzing...' : '▶ Run AI Analysis'}
                         </button>
                     </div>
                 </div>
@@ -525,7 +484,7 @@ export default function AIAnalysisView() {
                     )}
 
                     {/* Progress Bar */}
-                    {analysisProgress && (
+                    {progress && (
                         <div style={{
                             padding: '1.5rem',
                             background: 'var(--bg-tertiary)',
@@ -539,12 +498,12 @@ export default function AIAnalysisView() {
                                         AI Analysis in Progress...
                                     </div>
                                     <div style={{ fontSize: '1.25rem', fontWeight: '600', marginTop: '0.25rem' }}>
-                                        {analysisProgress.current} / {analysisProgress.target} conversations
+                                        {progress.current} / {progress.target} conversations
                                     </div>
                                 </div>
                                 <div style={{ fontSize: '2rem', fontWeight: '700', color: 'var(--accent-primary)' }}>
-                                    {analysisProgress.target > 0
-                                        ? Math.round((analysisProgress.current / analysisProgress.target) * 100)
+                                    {progress.target > 0
+                                        ? Math.round((progress.current / progress.target) * 100)
                                         : 0}%
                                 </div>
                             </div>
@@ -557,8 +516,8 @@ export default function AIAnalysisView() {
                             }}>
                                 <div style={{
                                     height: '100%',
-                                    width: analysisProgress.target > 0
-                                        ? `${(analysisProgress.current / analysisProgress.target) * 100}%`
+                                    width: progress.target > 0
+                                        ? `${(progress.current / progress.target) * 100}%`
                                         : '0%',
                                     background: 'linear-gradient(90deg, var(--accent-primary), var(--accent-secondary))',
                                     transition: 'width 0.5s ease',
@@ -566,7 +525,7 @@ export default function AIAnalysisView() {
                                 }}></div>
                             </div>
                             <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
-                                ⏱️ Estimated time: ~{Math.ceil((analysisProgress.target - analysisProgress.current) * 0.9)} seconds remaining
+                                ⏱️ Estimated time: ~{Math.ceil((progress.target - progress.current) * 0.9)} seconds remaining
                             </div>
                         </div>
                     )}
