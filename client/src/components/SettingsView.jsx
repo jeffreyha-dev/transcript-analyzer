@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import api from '../utils/api';
 import PromptManager from './PromptManager';
 import MetricConfigManager from './MetricConfigManager';
+import AnalysisConfigManager from './AnalysisConfigManager';
 
 export default function SettingsView() {
     const [clearing, setClearing] = useState(false);
@@ -305,6 +306,12 @@ export default function SettingsView() {
                     <section style={{ marginTop: '3rem' }}>
                         <h2 style={{ fontSize: '1.5rem', marginBottom: '1rem' }}>📊 Metric Configuration</h2>
                         <MetricConfigManager />
+                    </section>
+
+                    {/* Traditional Analysis Configuration */}
+                    <section style={{ marginTop: '3rem' }}>
+                        <h2 style={{ fontSize: '1.5rem', marginBottom: '1rem' }}>🔍 Traditional Analysis</h2>
+                        <AnalysisConfigManager />
                     </section>
 
                     {/* Data Management Section */}

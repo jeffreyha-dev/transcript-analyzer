@@ -205,6 +205,26 @@ class APIClient {
     async deleteMetricConfig(name) {
         return this.request(`/metric-configs/${name}`, { method: 'DELETE' });
     }
+
+    // Analysis Config
+    async getAnalysisConfig() {
+        return this.request('/analysis-config');
+    }
+
+    async getAnalysisConfigByType(type) {
+        return this.request(`/analysis-config/${type}`);
+    }
+
+    async updateAnalysisConfig(config) {
+        return this.request('/analysis-config', {
+            method: 'PUT',
+            body: JSON.stringify(config)
+        });
+    }
+
+    async resetAnalysisConfig() {
+        return this.request('/analysis-config/reset', { method: 'POST' });
+    }
 }
 
 export default new APIClient();

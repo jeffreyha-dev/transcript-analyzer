@@ -256,6 +256,79 @@ export function initializeDatabase() {
                   }
                 });
 
+                // Create analysis_config table
+                db.run(`
+                  CREATE TABLE IF NOT EXISTS analysis_config (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    config_key TEXT UNIQUE NOT NULL,
+                    config_value TEXT NOT NULL,
+                    config_type TEXT NOT NULL,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                  )
+                `, async (err) => {
+                  if (err) {
+                    console.error('Error creating analysis_config table:', err);
+                  } else {
+                    // Seed default analysis configs
+                    try {
+                      const configCount = await getOne('SELECT COUNT(*) as count FROM analysis_config');
+                      if (configCount.count === 0) {
+                        console.log('Seeding default analysis configs...');
+                        const defaultConfigs = [
+                          {
+                            key: 'sentiment_keywords',
+                            value: JSON.stringify({
+                              positive: ['great', 'excellent', 'satisfied', 'resolved', 'helpful', 'thank', 'appreciate', 'happy', 'perfect', 'amazing'],
+                              negative: ['frustrated', 'angry', 'disappointed', 'unresolved', 'terrible', 'worst', 'awful', 'poor', 'bad', 'unhappy'],
+                              neutral: ['okay', 'fine', 'alright', 'acceptable']
+                            }),
+                            type: 'sentiment'
+                          },
+                          {
+                            key: 'topic_patterns',
+                            value: JSON.stringify({
+                              billing: ['refund', 'charge', 'payment', 'invoice', 'bill', 'cost', 'price'],
+                              technical: ['error', 'bug', 'crash', 'not working', 'broken', 'issue', 'problem'],
+                              shipping: ['delivery', 'shipping', 'tracking', 'package', 'order'],
+                              account: ['login', 'password', 'account', 'access', 'username']
+                            }),
+                            type: 'topic'
+                          },
+                          {
+                            key: 'performance_thresholds',
+                            value: JSON.stringify({
+                              goodAgentScore: 80,
+                              avgResponseTimeTarget: 300,
+                              minMessageLength: 20,
+                              maxMessageLength: 500
+                            }),
+                            type: 'performance'
+                          },
+                          {
+                            key: 'keyword_extraction',
+                            value: JSON.stringify({
+                              minFrequency: 2,
+                              stopWords: ['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for'],
+                              alwaysInclude: []
+                            }),
+                            type: 'keywords'
+                          }
+                        ];
+
+                        for (const config of defaultConfigs) {
+                          await runQuery(
+                            `INSERT INTO analysis_config (config_key, config_value, config_type)
+                             VALUES (?, ?, ?)`,
+                            [config.key, config.value, config.type]
+                          );
+                        }
+                      }
+                    } catch (seedErr) {
+                      console.error('Error seeding analysis configs:', seedErr);
+                    }
+                  }
+                });
+
                 console.log('Database schema initialized successfully');
                 resolve();
               } catch (seedErr) {

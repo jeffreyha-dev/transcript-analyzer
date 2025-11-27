@@ -8,6 +8,7 @@ import aiAnalysisRouter from './routes/aiAnalysis.js';
 import settingsRouter from './routes/settings.js';
 import promptsRouter from './routes/prompts.js';
 import metricConfigsRouter from './routes/metricConfigs.js';
+import analysisConfigRouter from './routes/analysisConfig.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -24,6 +25,7 @@ app.use('/api/ai-analysis', aiAnalysisRouter);
 app.use('/api/settings', settingsRouter);
 app.use('/api/prompts', promptsRouter);
 app.use('/api/metric-configs', metricConfigsRouter);
+app.use('/api/analysis-config', analysisConfigRouter);
 
 // Health check
 app.get('/api/health', (req, res) => {
