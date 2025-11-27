@@ -11,10 +11,21 @@ export default function AIAnalysisView() {
     const [error, setError] = useState(null);
     const [selectedConversation, setSelectedConversation] = useState(null);
     const [analysisProgress, setAnalysisProgress] = useState(null);
+    const [metricConfigs, setMetricConfigs] = useState([]);
 
     useEffect(() => {
         loadResults();
+        loadMetricConfigs();
     }, [page, filters]);
+
+    const loadMetricConfigs = async () => {
+        try {
+            const configs = await api.getMetricConfigs();
+            setMetricConfigs(configs);
+        } catch (err) {
+            console.error('Failed to load metric configs:', err);
+        }
+    };
 
     const loadResults = async () => {
         try {
@@ -105,7 +116,26 @@ export default function AIAnalysisView() {
         }
     };
 
-    const getScoreColor = (score) => {
+    const getScoreColor = (score, metricName = null) => {
+        // Try to find custom config for this metric
+        if (metricName) {
+            const config = metricConfigs.find(c => c.metric_name.toLowerCase() === metricName.toLowerCase());
+            if (config && config.color_thresholds && config.color_thresholds.length > 0) {
+                // Normalize score to the metric's range
+                const normalizedScore = score;
+
+                // Find the appropriate color based on thresholds
+                for (const threshold of config.color_thresholds) {
+                    if (normalizedScore <= threshold.max) {
+                        return threshold.color;
+                    }
+                }
+                // If no threshold matched, use the last color
+                return config.color_thresholds[config.color_thresholds.length - 1].color;
+            }
+        }
+
+        // Default 0-100 logic
         if (score >= 80) return '#10b981';
         if (score >= 60) return '#f59e0b';
         return '#ef4444';
@@ -281,13 +311,13 @@ export default function AIAnalysisView() {
                                                     <div style={{
                                                         width: `${score}%`,
                                                         height: '100%',
-                                                        background: getScoreColor(score),
+                                                        background: getScoreColor(value, key),
                                                         transition: 'width 0.3s ease'
                                                     }}></div>
                                                 </div>
                                                 <span style={{
                                                     fontWeight: '600',
-                                                    color: getScoreColor(score),
+                                                    color: getScoreColor(value, key),
                                                     minWidth: '3rem',
                                                     textAlign: 'right'
                                                 }}>

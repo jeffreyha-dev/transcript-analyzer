@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import api from '../utils/api';
 import PromptManager from './PromptManager';
+import MetricConfigManager from './MetricConfigManager';
 
 export default function SettingsView() {
     const [clearing, setClearing] = useState(false);
@@ -294,19 +295,16 @@ export default function SettingsView() {
                         </form>
                     </section>
 
-                    {/* Prompt Management Section */}
-                    <section style={{ marginBottom: '2rem' }}>
-                        <h3 style={{ fontSize: '1.125rem', marginBottom: '1rem', color: 'var(--text-primary)' }}>
-                            📝 Prompt Management
-                        </h3>
-                        <div style={{
-                            padding: '1.5rem',
-                            background: 'var(--bg-tertiary)',
-                            borderRadius: '8px',
-                            border: '1px solid var(--border-color)'
-                        }}>
-                            <PromptManager />
-                        </div>
+                    {/* Prompt Management */}
+                    <section style={{ marginTop: '3rem' }}>
+                        <h2 style={{ fontSize: '1.5rem', marginBottom: '1rem' }}>📝 Prompt Management</h2>
+                        <PromptManager />
+                    </section>
+
+                    {/* Metric Configuration */}
+                    <section style={{ marginTop: '3rem' }}>
+                        <h2 style={{ fontSize: '1.5rem', marginBottom: '1rem' }}>📊 Metric Configuration</h2>
+                        <MetricConfigManager />
                     </section>
 
                     {/* Data Management Section */}
@@ -374,7 +372,7 @@ export default function SettingsView() {
                         </div>
                     </section>
                 </div>
-            </div>
-        </div>
+            </div >
+        </div >
     );
 }

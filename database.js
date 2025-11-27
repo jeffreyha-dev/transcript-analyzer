@@ -190,6 +190,72 @@ export function initializeDatabase() {
                     ['Default Analysis', 'Standard comprehensive analysis prompt', prompts.combinedAnalysis('{{TRANSCRIPT}}')]
                   );
                 }
+
+                // Create metric_configs table
+                db.run(`
+                  CREATE TABLE IF NOT EXISTS metric_configs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    metric_name TEXT UNIQUE NOT NULL,
+                    min_value REAL NOT NULL,
+                    max_value REAL NOT NULL,
+                    reverse_scale BOOLEAN DEFAULT 0,
+                    color_thresholds TEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                  )
+                `, async (err) => {
+                  if (err) {
+                    console.error('Error creating metric_configs table:', err);
+                  } else {
+                    // Seed default metric configs
+                    try {
+                      const configCount = await getOne('SELECT COUNT(*) as count FROM metric_configs');
+                      if (configCount.count === 0) {
+                        console.log('Seeding default metric configs...');
+                        const defaultConfigs = [
+                          {
+                            name: 'CES',
+                            min: 1,
+                            max: 5,
+                            reverse: 0,
+                            thresholds: JSON.stringify([{ max: 2, color: '#ef4444' }, { max: 4, color: '#f59e0b' }, { max: 5, color: '#10b981' }])
+                          },
+                          {
+                            name: 'NPS',
+                            min: -100,
+                            max: 100,
+                            reverse: 0,
+                            thresholds: JSON.stringify([{ max: 0, color: '#ef4444' }, { max: 50, color: '#f59e0b' }, { max: 100, color: '#10b981' }])
+                          },
+                          {
+                            name: 'CSAT',
+                            min: 1,
+                            max: 5,
+                            reverse: 0,
+                            thresholds: JSON.stringify([{ max: 2, color: '#ef4444' }, { max: 4, color: '#f59e0b' }, { max: 5, color: '#10b981' }])
+                          },
+                          {
+                            name: 'churnRiskScore',
+                            min: 0,
+                            max: 100,
+                            reverse: 1,
+                            thresholds: JSON.stringify([{ max: 30, color: '#10b981' }, { max: 70, color: '#f59e0b' }, { max: 100, color: '#ef4444' }])
+                          }
+                        ];
+
+                        for (const config of defaultConfigs) {
+                          await runQuery(
+                            `INSERT INTO metric_configs (metric_name, min_value, max_value, reverse_scale, color_thresholds)
+                             VALUES (?, ?, ?, ?, ?)`,
+                            [config.name, config.min, config.max, config.reverse, config.thresholds]
+                          );
+                        }
+                      }
+                    } catch (seedErr) {
+                      console.error('Error seeding metric configs:', seedErr);
+                    }
+                  }
+                });
+
                 console.log('Database schema initialized successfully');
                 resolve();
               } catch (seedErr) {

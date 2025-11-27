@@ -185,6 +185,26 @@ class APIClient {
     async deletePrompt(id) {
         return this.request(`/prompts/${id}`, { method: 'DELETE' });
     }
+
+    // Metric Configs
+    async getMetricConfigs() {
+        return this.request('/metric-configs');
+    }
+
+    async getMetricConfig(name) {
+        return this.request(`/metric-configs/${name}`);
+    }
+
+    async saveMetricConfig(config) {
+        return this.request('/metric-configs', {
+            method: 'POST',
+            body: JSON.stringify(config)
+        });
+    }
+
+    async deleteMetricConfig(name) {
+        return this.request(`/metric-configs/${name}`, { method: 'DELETE' });
+    }
 }
 
 export default new APIClient();
