@@ -105,6 +105,28 @@ router.post('/reset', async (req, res) => {
     }
 });
 
+// Delete prompt
+router.delete('/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        // Check if it's the default prompt
+        const prompt = await getOne('SELECT is_default FROM ai_prompts WHERE id = ?', [id]);
+        if (!prompt) {
+            return res.status(404).json({ error: 'Prompt not found' });
+        }
+        if (prompt.is_default === 1) {
+            return res.status(400).json({ error: 'Cannot delete default prompt' });
+        }
+
+        await runQuery('DELETE FROM ai_prompts WHERE id = ?', [id]);
+        res.json({ message: 'Prompt deleted successfully' });
+    } catch (error) {
+        console.error('Error deleting prompt:', error);
+        res.status(500).json({ error: 'Failed to delete prompt' });
+    }
+});
+
 // Generate prompt template
 router.post('/generate', async (req, res) => {
     try {

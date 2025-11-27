@@ -181,6 +181,10 @@ class APIClient {
             body: JSON.stringify({ description })
         });
     }
+
+    async deletePrompt(id) {
+        return this.request(`/prompts/${id}`, { method: 'DELETE' });
+    }
 }
 
 export default new APIClient();

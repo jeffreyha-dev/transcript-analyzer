@@ -79,6 +79,17 @@ export default function PromptManager() {
         }
     };
 
+    const handleDelete = async (id, name) => {
+        if (!window.confirm(`Are you sure you want to delete "${name}"?`)) return;
+        try {
+            await api.deletePrompt(id);
+            setMessage({ type: 'success', text: 'Prompt deleted successfully' });
+            loadPrompts();
+        } catch (err) {
+            setMessage({ type: 'error', text: err.message || 'Failed to delete prompt' });
+        }
+    };
+
     if (loading) return <div>Loading prompts...</div>;
 
     if (editingPrompt) {
@@ -216,6 +227,15 @@ export default function PromptManager() {
                                     >
                                         Edit
                                     </button>
+                                    {prompt.is_default !== 1 && (
+                                        <button
+                                            onClick={() => handleDelete(prompt.id, prompt.name)}
+                                            className="btn btn-sm btn-secondary"
+                                            style={{ color: '#ef4444' }}
+                                        >
+                                            Delete
+                                        </button>
+                                    )}
                                 </div>
                             </div>
                         </div>
