@@ -375,3 +375,63 @@ export function getAll(sql, params = []) {
 
 // Export database instance
 export default db;
+
+// Analytics Queries
+export async function getHeatmapData(dateRange = 'all', sentimentFilter = 'all') {
+  let dateFilter = '1=1';
+  if (dateRange !== 'all') {
+    const days = parseInt(dateRange.replace('d', ''));
+    dateFilter = `analyzed_at >= datetime('now', '-${days} days')`;
+  }
+
+  let sentimentCondition = '1=1';
+  if (sentimentFilter !== 'all') {
+    if (sentimentFilter === 'positive') sentimentCondition = "sentiment_label = 'Positive' OR sentiment_label = 'Very Positive'";
+    else if (sentimentFilter === 'negative') sentimentCondition = "sentiment_label = 'Negative' OR sentiment_label = 'Very Negative'";
+    else sentimentCondition = "sentiment_label = 'Neutral'";
+  }
+
+  const sql = `
+    SELECT 
+      strftime('%w', analyzed_at) as day_of_week,
+      strftime('%H', analyzed_at) as hour_of_day,
+      AVG(overall_sentiment) as avg_sentiment,
+      COUNT(*) as count
+    FROM analysis_results
+    WHERE ${dateFilter} AND ${sentimentCondition}
+    GROUP BY day_of_week, hour_of_day
+  `;
+
+  return getAll(sql);
+}
+
+export async function getTopicClusters(dateRange = 'all', sentimentFilter = 'all') {
+  let dateFilter = '1=1';
+  if (dateRange !== 'all') {
+    const days = parseInt(dateRange.replace('d', ''));
+    dateFilter = `analyzed_at >= datetime('now', '-${days} days')`;
+  }
+
+  let sentimentCondition = '1=1';
+  if (sentimentFilter !== 'all') {
+    if (sentimentFilter === 'positive') sentimentCondition = "sentiment_label = 'Positive' OR sentiment_label = 'Very Positive'";
+    else if (sentimentFilter === 'negative') sentimentCondition = "sentiment_label = 'Negative' OR sentiment_label = 'Very Negative'";
+    else sentimentCondition = "sentiment_label = 'Neutral'";
+  }
+
+  const sql = `
+    SELECT 
+      conversation_id,
+      overall_sentiment,
+      customer_satisfaction_score,
+      sentiment_label,
+      topics,
+      analyzed_at
+    FROM analysis_results
+    WHERE ${dateFilter} AND ${sentimentCondition}
+    ORDER BY analyzed_at DESC
+    LIMIT 500
+  `;
+
+  return getAll(sql);
+}

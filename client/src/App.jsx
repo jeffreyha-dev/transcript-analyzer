@@ -5,6 +5,7 @@ import AnalysisView from './components/AnalysisView';
 import AIAnalysisView from './components/AIAnalysisView';
 import ExportView from './components/ExportView';
 import SettingsView from './components/SettingsView';
+import InteractiveExplorer from './components/InteractiveExplorer';
 import { AnalysisProvider } from './context/AnalysisContext';
 import './index.css';
 
@@ -65,6 +66,12 @@ function App() {
                   🤖 AI Analysis
                 </button>
                 <button
+                  className={`btn ${currentView === 'explore' ? 'btn-primary' : 'btn-secondary'}`}
+                  onClick={() => setCurrentView('explore')}
+                >
+                  🧭 Explore
+                </button>
+                <button
                   className={`btn ${currentView === 'export' ? 'btn-primary' : 'btn-secondary'}`}
                   onClick={() => setCurrentView('export')}
                 >
@@ -87,6 +94,7 @@ function App() {
           {currentView === 'upload' && <Upload />}
           {currentView === 'analysis' && <AnalysisView />}
           {currentView === 'ai-analysis' && <AIAnalysisView />}
+          {currentView === 'explore' && <InteractiveExplorer />}
           {currentView === 'export' && <ExportView />}
           {currentView === 'settings' && <SettingsView />}
         </main>

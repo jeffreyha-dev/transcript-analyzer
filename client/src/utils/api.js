@@ -225,6 +225,21 @@ class APIClient {
     async resetAnalysisConfig() {
         return this.request('/analysis-config/reset', { method: 'POST' });
     }
+
+    // Analytics
+    async getHeatmapData(dateRange, sentimentFilter) {
+        const params = new URLSearchParams();
+        if (dateRange) params.append('dateRange', dateRange);
+        if (sentimentFilter) params.append('sentimentFilter', sentimentFilter);
+        return this.request(`/analytics/heatmap?${params.toString()}`);
+    }
+
+    async getTopicClusters(dateRange, sentimentFilter) {
+        const params = new URLSearchParams();
+        if (dateRange) params.append('dateRange', dateRange);
+        if (sentimentFilter) params.append('sentimentFilter', sentimentFilter);
+        return this.request(`/analytics/topics?${params.toString()}`);
+    }
 }
 
 export default new APIClient();

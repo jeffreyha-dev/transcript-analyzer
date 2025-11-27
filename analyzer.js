@@ -312,7 +312,25 @@ export class TranscriptAnalyzer {
      * Helper: Check if word is a stop word
      */
     isStopWord(word) {
-        const stopWords = ['the', 'is', 'at', 'which', 'on', 'and', 'a', 'an', 'as', 'are', 'was', 'were', 'been', 'be', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'can', 'this', 'that', 'these', 'those', 'i', 'you', 'he', 'she', 'it', 'we', 'they', 'what', 'who', 'when', 'where', 'why', 'how', 'for', 'with', 'from', 'to', 'of', 'in', 'out', 'up', 'down'];
+        const stopWords = [
+            // Common English stop words
+            'the', 'is', 'at', 'which', 'on', 'and', 'a', 'an', 'as', 'are', 'was', 'were', 'been', 'be',
+            'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might',
+            'can', 'this', 'that', 'these', 'those', 'i', 'you', 'he', 'she', 'it', 'we', 'they', 'what',
+            'who', 'when', 'where', 'why', 'how', 'for', 'with', 'from', 'to', 'of', 'in', 'out', 'up', 'down',
+            'but', 'or', 'not', 'no', 'yes', 'if', 'then', 'than', 'so', 'just', 'now', 'very', 'too', 'also',
+            'only', 'some', 'all', 'any', 'both', 'each', 'few', 'more', 'most', 'other', 'such', 'own', 'same',
+            'here', 'there', 'about', 'after', 'before', 'between', 'into', 'through', 'during', 'above', 'below',
+
+            // Generic conversation/support terms (these appear in ALL conversations)
+            'agent', 'customer', 'support', 'user', 'hello', 'hi', 'hey', 'thanks', 'thank', 'please', 'help',
+            'assist', 'assistance', 'service', 'today', 'call', 'contact', 'speak', 'speaking', 'talk', 'talking',
+            'understand', 'see', 'know', 'need', 'want', 'get', 'got', 'like', 'well', 'okay', 'ok', 'sure',
+            'right', 'good', 'great', 'sorry', 'apologize', 'appreciate', 'welcome', 'bye', 'goodbye', 'anything',
+            'something', 'everything', 'nothing', 'someone', 'everyone', 'anyone', 'time', 'day', 'week', 'month',
+            'year', 'minute', 'hour', 'moment', 'let', 'make', 'made', 'give', 'take', 'come', 'go', 'going',
+            'really', 'actually', 'definitely', 'certainly', 'probably', 'maybe', 'perhaps'
+        ];
         return stopWords.includes(word.toLowerCase());
     }
 
