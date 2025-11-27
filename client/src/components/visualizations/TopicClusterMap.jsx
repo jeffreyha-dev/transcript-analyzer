@@ -81,6 +81,28 @@ export default function TopicClusterMap({ dateRange, sentimentFilter }) {
 
     if (loading) return <div className="flex justify-center p-xl"><div className="spinner"></div></div>;
 
+    if (data.length === 0) {
+        return (
+            <div className="card h-full" style={{ minHeight: '600px' }}>
+                <div className="p-md border-b border-border">
+                    <h3 className="text-lg font-semibold">Topic Landscape</h3>
+                    <p className="text-sm text-secondary">
+                        X-Axis: Sentiment (Negative ← → Positive) • Y-Axis: Topic Cluster
+                    </p>
+                </div>
+                <div className="flex items-center justify-center" style={{ height: '500px' }}>
+                    <div className="text-center p-xl">
+                        <p className="text-lg mb-sm">No AI Analysis Data Available</p>
+                        <p className="text-sm text-secondary">
+                            Topic clustering requires AI analysis to be run first.<br />
+                            Go to the AI Analysis tab and run analysis on your conversations.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="card h-full" style={{ minHeight: '600px' }}>
             <div className="p-md border-b border-border">

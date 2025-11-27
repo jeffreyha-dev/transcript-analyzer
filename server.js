@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
-import { initializeDatabase } from './database.js';
+import { initDatabase } from './database.js';
 import conversationsRouter from './routes/conversations.js';
 import analysisRouter from './routes/analysis.js';
 import aiAnalysisRouter from './routes/aiAnalysis.js';
@@ -60,7 +60,7 @@ app.use((err, req, res, next) => {
 // Initialize database and start server
 async function startServer() {
     try {
-        await initializeDatabase();
+        await initDatabase();
 
         // Initialize AI Config
         const { default: llmService } = await import('./llmService.js');

@@ -29,7 +29,6 @@ export class TranscriptAnalyzer {
 
         // Run all analysis modules
         results.sentiment = this.analyzeSentiment(messages, transcriptDetails);
-        results.topics = this.extractTopics(transcriptDetails);
         results.keywords = this.extractKeywords(transcriptDetails);
         results.metrics = this.calculateMetrics(messages);
         results.agentPerformance = this.analyzeAgentPerformance(messages);
@@ -122,26 +121,6 @@ export class TranscriptAnalyzer {
         if (score < -2) return 'Very Negative';
         if (score < 0) return 'Negative';
         return 'Neutral';
-    }
-
-    /**
-     * Topic Extraction using TF-IDF
-     */
-    extractTopics(transcript) {
-        const tfidf = new TfIdf();
-        tfidf.addDocument(transcript);
-
-        const topics = [];
-        tfidf.listTerms(0).slice(0, 10).forEach(item => {
-            if (item.term.length > 3 && !this.isStopWord(item.term)) {
-                topics.push({
-                    term: item.term,
-                    score: item.tfidf.toFixed(3)
-                });
-            }
-        });
-
-        return topics;
     }
 
     /**
@@ -298,7 +277,6 @@ export class TranscriptAnalyzer {
             positive_count: results.sentiment.positiveCount,
             negative_count: results.sentiment.negativeCount,
             neutral_count: results.sentiment.neutralCount,
-            topics: JSON.stringify(results.topics),
             keywords: JSON.stringify(results.keywords),
             avg_message_length: parseFloat(results.metrics.avgMessageLength),
             avg_response_time: parseFloat(results.metrics.avgResponseTime),
@@ -321,15 +299,87 @@ export class TranscriptAnalyzer {
             'but', 'or', 'not', 'no', 'yes', 'if', 'then', 'than', 'so', 'just', 'now', 'very', 'too', 'also',
             'only', 'some', 'all', 'any', 'both', 'each', 'few', 'more', 'most', 'other', 'such', 'own', 'same',
             'here', 'there', 'about', 'after', 'before', 'between', 'into', 'through', 'during', 'above', 'below',
+            'off', 'over', 'under', 'again', 'further', 'once', 'while', 'because', 'until', 'since', 'though',
+            'although', 'unless', 'whether', 'either', 'neither', 'nor', 'yet', 'still', 'even', 'ever', 'never',
 
             // Generic conversation/support terms (these appear in ALL conversations)
-            'agent', 'customer', 'support', 'user', 'hello', 'hi', 'hey', 'thanks', 'thank', 'please', 'help',
-            'assist', 'assistance', 'service', 'today', 'call', 'contact', 'speak', 'speaking', 'talk', 'talking',
-            'understand', 'see', 'know', 'need', 'want', 'get', 'got', 'like', 'well', 'okay', 'ok', 'sure',
-            'right', 'good', 'great', 'sorry', 'apologize', 'appreciate', 'welcome', 'bye', 'goodbye', 'anything',
-            'something', 'everything', 'nothing', 'someone', 'everyone', 'anyone', 'time', 'day', 'week', 'month',
-            'year', 'minute', 'hour', 'moment', 'let', 'make', 'made', 'give', 'take', 'come', 'go', 'going',
-            'really', 'actually', 'definitely', 'certainly', 'probably', 'maybe', 'perhaps'
+            'agent', 'customer', 'support', 'user', 'representative', 'rep', 'team', 'member', 'staff',
+
+            // Greetings and closings
+            'hello', 'hi', 'hey', 'greetings', 'welcome', 'goodbye', 'bye', 'farewell', 'later', 'cheers',
+
+            // Politeness and acknowledgment
+            'thanks', 'thank', 'please', 'sorry', 'apologize', 'apologies', 'excuse', 'pardon',
+            'appreciate', 'appreciated', 'appreciation', 'grateful', 'gratitude', 'welcomed',
+
+            // Help and assistance (generic)
+            'help', 'helped', 'helping', 'helps', 'assist', 'assisted', 'assisting', 'assists', 'assistance',
+
+            // Communication verbs
+            'call', 'called', 'calling', 'calls', 'contact', 'contacted', 'contacting', 'contacts',
+            'speak', 'spoke', 'speaking', 'speaks', 'talk', 'talked', 'talking', 'talks', 'tell', 'told',
+            'say', 'said', 'saying', 'says', 'ask', 'asked', 'asking', 'asks', 'answer', 'answered',
+            'reply', 'replied', 'respond', 'responded', 'chat', 'chatting', 'message', 'messaging',
+
+            // Understanding and knowledge
+            'understand', 'understood', 'understanding', 'understands', 'see', 'saw', 'seen', 'seeing',
+            'know', 'knew', 'known', 'knowing', 'knows', 'aware', 'realize', 'realized',
+
+            // Wanting and needing (too generic)
+            'need', 'needed', 'needing', 'needs', 'want', 'wanted', 'wanting', 'wants', 'wish', 'wished',
+            'like', 'liked', 'prefer', 'preferred',
+
+            // Getting and having (too generic)
+            'get', 'got', 'getting', 'gets', 'gotten', 'receive', 'received', 'receiving',
+            'give', 'gave', 'given', 'giving', 'gives', 'take', 'took', 'taken', 'taking', 'takes',
+            'make', 'made', 'making', 'makes', 'put', 'putting',
+
+            // Being and doing (too generic)
+            'come', 'came', 'coming', 'comes', 'go', 'went', 'going', 'goes', 'gone',
+            'use', 'used', 'using', 'uses', 'try', 'tried', 'trying', 'tries', 'attempt', 'attempted',
+
+            // Affirmations and negations
+            'okay', 'ok', 'alright', 'fine', 'sure', 'certainly', 'definitely', 'absolutely',
+            'right', 'correct', 'exactly', 'yes', 'yeah', 'yep', 'yup', 'nope', 'nah',
+
+            // Qualifiers and intensifiers
+            'well', 'really', 'actually', 'basically', 'literally', 'honestly', 'truly',
+            'quite', 'rather', 'pretty', 'fairly', 'somewhat', 'kind', 'sort', 'type',
+            'probably', 'possibly', 'maybe', 'perhaps', 'hopefully',
+
+            // Quality descriptors (too generic without context)
+            'good', 'better', 'best', 'great', 'excellent', 'wonderful', 'perfect', 'amazing',
+            'bad', 'worse', 'worst', 'terrible', 'awful', 'horrible', 'poor',
+            'new', 'old', 'different', 'same', 'similar', 'easy', 'hard', 'difficult',
+
+            // Pronouns and determiners
+            'my', 'your', 'his', 'her', 'its', 'our', 'their', 'mine', 'yours', 'ours', 'theirs',
+            'myself', 'yourself', 'himself', 'herself', 'itself', 'ourselves', 'themselves',
+            'one', 'ones', 'another', 'others',
+
+            // Time references (too generic)
+            'time', 'times', 'today', 'tomorrow', 'yesterday', 'day', 'days', 'week', 'weeks',
+            'month', 'months', 'year', 'years', 'hour', 'hours', 'minute', 'minutes', 'second', 'seconds',
+            'moment', 'moments', 'morning', 'afternoon', 'evening', 'night', 'soon', 'later', 'earlier',
+            'currently', 'recently', 'previously', 'already', 'always', 'sometimes', 'often', 'usually',
+
+            // Quantity and amount (too generic)
+            'much', 'many', 'little', 'less', 'least', 'enough', 'several', 'couple', 'bit',
+
+            // Actions without context
+            'let', 'lets', 'letting', 'allow', 'allowed', 'enable', 'enabled',
+            'start', 'started', 'starting', 'begin', 'began', 'begun', 'beginning',
+            'end', 'ended', 'ending', 'finish', 'finished', 'finishing', 'complete', 'completed',
+            'continue', 'continued', 'continuing', 'keep', 'kept', 'keeping',
+
+            // Meta-conversation words
+            'thing', 'things', 'stuff', 'something', 'anything', 'everything', 'nothing',
+            'someone', 'anyone', 'everyone', 'nobody', 'somebody', 'anybody', 'everybody',
+            'somewhere', 'anywhere', 'everywhere', 'nowhere',
+
+            // Filler words and discourse markers
+            'um', 'uh', 'hmm', 'ah', 'oh', 'you', 'know', 'mean',
+            'essentially', 'generally', 'specifically', 'particularly'
         ];
         return stopWords.includes(word.toLowerCase());
     }

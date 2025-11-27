@@ -21,7 +21,7 @@ const db = new sqlite3.Database(dbPath, (err) => {
 db.run('PRAGMA foreign_keys = ON');
 
 // Initialize database schema
-export function initializeDatabase() {
+function initDatabase() {
   return new Promise((resolve, reject) => {
     db.serialize(() => {
       // Conversations table
@@ -295,6 +295,30 @@ export function initializeDatabase() {
                             type: 'topic'
                           },
                           {
+                            key: 'topic_stop_words',
+                            value: JSON.stringify({
+                              stopWords: [
+                                'the', 'is', 'at', 'which', 'on', 'and', 'a', 'an', 'as', 'are', 'was', 'were', 'been', 'be',
+                                'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might',
+                                'can', 'this', 'that', 'these', 'those', 'i', 'you', 'he', 'she', 'it', 'we', 'they', 'what',
+                                'who', 'when', 'where', 'why', 'how', 'for', 'with', 'from', 'to', 'of', 'in', 'out', 'up', 'down',
+                                'but', 'or', 'not', 'no', 'yes', 'if', 'then', 'than', 'so', 'just', 'now', 'very', 'too', 'also',
+                                'only', 'some', 'all', 'any', 'both', 'each', 'few', 'more', 'most', 'other', 'such', 'own', 'same',
+                                'here', 'there', 'about', 'after', 'before', 'between', 'into', 'through', 'during', 'above', 'below',
+                                'agent', 'customer', 'support', 'user', 'hello', 'hi', 'hey', 'thanks', 'thank', 'please', 'help',
+                                'assist', 'assistance', 'service', 'today', 'call', 'contact', 'speak', 'speaking', 'talk', 'talking',
+                                'understand', 'see', 'know', 'need', 'want', 'get', 'got', 'like', 'well', 'okay', 'ok', 'sure',
+                                'right', 'good', 'great', 'sorry', 'apologize', 'appreciate', 'welcome', 'bye', 'goodbye', 'anything',
+                                'something', 'everything', 'nothing', 'someone', 'everyone', 'anyone', 'time', 'day', 'week', 'month',
+                                'year', 'minute', 'hour', 'moment', 'let', 'make', 'made', 'give', 'take', 'come', 'go', 'going',
+                                'really', 'actually', 'definitely', 'certainly', 'probably', 'maybe', 'perhaps'
+                              ],
+                              minTermLength: 3,
+                              maxTopics: 10
+                            }),
+                            type: 'topic'
+                          },
+                          {
                             key: 'performance_thresholds',
                             value: JSON.stringify({
                               goodAgentScore: 80,
@@ -344,7 +368,7 @@ export function initializeDatabase() {
 }
 
 // Helper function to run queries with promises
-export function runQuery(sql, params = []) {
+function runQuery(sql, params = []) {
   return new Promise((resolve, reject) => {
     db.run(sql, params, function (err) {
       if (err) reject(err);
@@ -354,7 +378,7 @@ export function runQuery(sql, params = []) {
 }
 
 // Helper function to get single row
-export function getOne(sql, params = []) {
+function getOne(sql, params = []) {
   return new Promise((resolve, reject) => {
     db.get(sql, params, (err, row) => {
       if (err) reject(err);
@@ -364,7 +388,7 @@ export function getOne(sql, params = []) {
 }
 
 // Helper function to get all rows
-export function getAll(sql, params = []) {
+function getAll(sql, params = []) {
   return new Promise((resolve, reject) => {
     db.all(sql, params, (err, rows) => {
       if (err) reject(err);
@@ -377,7 +401,7 @@ export function getAll(sql, params = []) {
 export default db;
 
 // Analytics Queries
-export async function getHeatmapData(dateRange = 'all', sentimentFilter = 'all') {
+async function getHeatmapData(dateRange = 'all', sentimentFilter = 'all') {
   let dateFilter = '1=1';
   if (dateRange !== 'all') {
     const days = parseInt(dateRange.replace('d', ''));
@@ -405,33 +429,33 @@ export async function getHeatmapData(dateRange = 'all', sentimentFilter = 'all')
   return getAll(sql);
 }
 
-export async function getTopicClusters(dateRange = 'all', sentimentFilter = 'all') {
-  let dateFilter = '1=1';
-  if (dateRange !== 'all') {
-    const days = parseInt(dateRange.replace('d', ''));
-    dateFilter = `analyzed_at >= datetime('now', '-${days} days')`;
+async function getTopicClusters(dateRange, sentimentFilter) {
+  let query = `
+        SELECT 
+            conversation_id,
+            overall_sentiment,
+            customer_satisfaction_score,
+            sentiment_label,
+            topics,
+            analyzed_at
+        FROM ai_analysis_results
+        WHERE 1=1
+    `;
+  const params = [];
+
+  if (dateRange && dateRange.start && dateRange.end) {
+    query += ' AND analyzed_at BETWEEN ? AND ?';
+    params.push(dateRange.start, dateRange.end);
   }
 
-  let sentimentCondition = '1=1';
-  if (sentimentFilter !== 'all') {
-    if (sentimentFilter === 'positive') sentimentCondition = "sentiment_label = 'Positive' OR sentiment_label = 'Very Positive'";
-    else if (sentimentFilter === 'negative') sentimentCondition = "sentiment_label = 'Negative' OR sentiment_label = 'Very Negative'";
-    else sentimentCondition = "sentiment_label = 'Neutral'";
+  if (sentimentFilter) {
+    query += ' AND sentiment_label = ?';
+    params.push(sentimentFilter);
   }
 
-  const sql = `
-    SELECT 
-      conversation_id,
-      overall_sentiment,
-      customer_satisfaction_score,
-      sentiment_label,
-      topics,
-      analyzed_at
-    FROM analysis_results
-    WHERE ${dateFilter} AND ${sentimentCondition}
-    ORDER BY analyzed_at DESC
-    LIMIT 500
-  `;
+  query += ' ORDER BY analyzed_at DESC LIMIT 500';
 
-  return getAll(sql);
+  return getAll(query, params);
 }
+
+export { initDatabase, runQuery, getOne, getAll, getHeatmapData, getTopicClusters };

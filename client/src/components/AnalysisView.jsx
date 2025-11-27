@@ -319,15 +319,6 @@ export default function AnalysisView() {
                                                 </span>
                                             </td>
                                             <td>{result.avg_message_length?.toFixed(0)}</td>
-                                            <td>
-                                                <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap' }}>
-                                                    {result.topics?.slice(0, 3).map((topic, idx) => (
-                                                        <span key={idx} className="badge badge-primary" style={{ fontSize: '0.7rem' }}>
-                                                            {topic.term}
-                                                        </span>
-                                                    ))}
-                                                </div>
-                                            </td>
                                         </tr>
                                     ))}
                                 </tbody>
