@@ -1,232 +1,314 @@
-import fetch from 'node-fetch';
-import { generateOAuthHeader } from './oauthService.js';
+import crypto from 'crypto';
+import { runQuery } from '../database.js';
 
 /**
- * LivePerson Messaging History API Service
- * Handles conversation fetching, domain discovery, and transcript building
+ * Generate OAuth 1.0 signature for LivePerson API
  */
+function generateOAuthSignature(method, url, params, consumerSecret, tokenSecret) {
+    // Sort parameters
+    const sortedParams = Object.keys(params)
+        .sort()
+        .map(key => `${encodeURIComponent(key)}=${encodeURIComponent(params[key])}`)
+        .join('&');
 
-/**
- * Discover the service domain for a LivePerson service
- * @param {string} accountId - LivePerson account ID
- * @param {string} serviceName - Service name (e.g., 'msgHist')
- * @param {object} credentials - OAuth credentials
- * @param {string} apiVersion - API version (default: '1.0')
- * @returns {Promise<string>} Service domain
- */
-export async function discoverServiceDomain(accountId, serviceName, credentials, apiVersion = '1.0') {
-    const url = `https://api.liveperson.net/api/account/${accountId}/service/${serviceName}/baseURI.json?version=${apiVersion}`;
+    // Create signature base string
+    const signatureBaseString = [
+        method.toUpperCase(),
+        encodeURIComponent(url),
+        encodeURIComponent(sortedParams)
+    ].join('&');
 
-    const authHeader = generateOAuthHeader(url, 'GET', credentials);
+    // Create signing key
+    const signingKey = `${encodeURIComponent(consumerSecret)}&${encodeURIComponent(tokenSecret)}`;
 
-    const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-            'Authorization': authHeader,
-        },
-    });
+    // Generate signature
+    const signature = crypto
+        .createHmac('sha1', signingKey)
+        .update(signatureBaseString)
+        .digest('base64');
 
-    if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Domain discovery failed (${response.status}): ${errorText}`);
-    }
-
-    const data = await response.json();
-
-    if (!data.baseURI) {
-        throw new Error('Domain API did not return baseURI');
-    }
-
-    return data.baseURI;
+    return signature;
 }
 
 /**
- * Build transcript from LivePerson message records
- * @param {Array} messageRecords - Array of message objects
- * @returns {string} Formatted transcript
+ * Generate OAuth 1.0 authorization header
  */
-export function buildTranscript(messageRecords) {
-    if (!Array.isArray(messageRecords)) {
-        return '';
+function generateOAuthHeader(account, method, url, additionalParams = {}) {
+    const oauthParams = {
+        oauth_consumer_key: account.consumer_key,
+        oauth_token: account.token,
+        oauth_signature_method: 'HMAC-SHA1',
+        oauth_timestamp: Math.floor(Date.now() / 1000).toString(),
+        oauth_nonce: crypto.randomBytes(16).toString('hex'),
+        oauth_version: '1.0'
+    };
+
+    // Extract query parameters from URL
+    const [baseUrl, queryString] = url.split('?');
+    const queryParams = {};
+
+    if (queryString) {
+        queryString.split('&').forEach(param => {
+            const [key, value] = param.split('=');
+            if (key) {
+                queryParams[decodeURIComponent(key)] = value ? decodeURIComponent(value) : '';
+            }
+        });
     }
 
-    const lines = [];
+    // Combine OAuth params, query params, and additional params for signature
+    const allParams = { ...oauthParams, ...queryParams, ...additionalParams };
 
-    for (const message of messageRecords) {
-        const role = message?.sentBy === 'Consumer' ? 'Consumer'
-            : message?.sentBy === 'Agent' ? 'Agent'
-                : null;
+    // Generate signature using the base URL (without query params)
+    const signature = generateOAuthSignature(
+        method,
+        baseUrl,
+        allParams,
+        account.consumer_secret,
+        account.token_secret
+    );
 
-        if (!role) continue;
+    oauthParams.oauth_signature = signature;
 
-        let text = message?.messageData?.msg?.text ?? '';
-        if (!text || String(text).trim() === '') continue;
+    // Build authorization header
+    const authHeader = 'OAuth ' + Object.keys(oauthParams)
+        .sort()
+        .map(key => `${encodeURIComponent(key)}="${encodeURIComponent(oauthParams[key])}"`)
+        .join(', ');
 
-        // Normalize whitespace to keep one line per message
-        text = String(text)
-            .replace(/\r\n|\r|\n/g, ' ')
-            .replace(/\s+/g, ' ')
-            .trim();
-
-        lines.push(`${role}: ${text}`);
-    }
-
-    return lines.join('\n');
+    return authHeader;
 }
 
 /**
- * Fetch conversations from LivePerson
- * @param {object} params - Fetch parameters
- * @param {object} params.credentials - OAuth credentials
- * @param {string} params.serviceName - Service name (default: 'msgHist')
- * @param {string} params.apiVersion - API version (default: '1.0')
- * @param {string} params.apiEndpointPath - API endpoint path (default: '/messaging_history/api/account/{accountId}/conversations/search')
- * @param {object} params.dateRange - { from: timestamp, to: timestamp }
- * @param {Array<string>} params.status - Conversation statuses (e.g., ['CLOSE'])
- * @param {Array<number>} params.skillIds - Optional skill IDs filter
- * @param {number} params.batchSize - Number of conversations per page (default: 20)
- * @param {function} params.onProgress - Progress callback (current, total)
- * @returns {Promise<Array>} Array of conversation objects
+ * Get LivePerson domain for a service
  */
-export async function fetchConversations(params) {
-    const {
-        credentials,
-        serviceName = 'msgHist',
-        apiVersion = '1.0',
-        apiEndpointPath = '/messaging_history/api/account/{accountId}/conversations/search',
-        dateRange,
-        status = ['CLOSE'],
-        skillIds = [],
-        batchSize = 20,
-        onProgress = null,
-    } = params;
+async function getLivePersonDomain(accountId, serviceName) {
+    try {
+        const response = await fetch(
+            `https://api.liveperson.net/api/account/${accountId}/service/${serviceName}/baseURI.json?version=1.0`
+        );
 
-    const { accountId } = credentials;
-
-    // Discover service domain
-    const domain = await discoverServiceDomain(accountId, serviceName, credentials, apiVersion);
-
-    // Construct URL using configured path
-    const path = apiEndpointPath.replace('{accountId}', accountId);
-    const baseUrl = `https://${domain}${path}`;
-
-    const conversations = [];
-    let offset = 0;
-    let hasMore = true;
-    let totalExpected = null;
-
-    while (hasMore) {
-        const url = `${baseUrl}?offset=${offset}&limit=${batchSize}`;
-
-        const requestBody = {
-            start: {
-                from: dateRange.from,
-                to: dateRange.to,
-            },
-            status,
-        };
-
-        // Add skill filter if provided
-        if (skillIds.length > 0) {
-            requestBody.latestSkillIds = skillIds;
+        if (!response.ok) {
+            throw new Error(`Failed to get domain: ${response.statusText}`);
         }
 
-        const authHeader = generateOAuthHeader(url, 'POST', credentials);
+        const data = await response.json();
+        return data.baseURI;
+    } catch (error) {
+        console.error('Error getting LP domain:', error);
+        throw error;
+    }
+}
 
+/**
+ * Test LivePerson connection
+ */
+export async function testLivePersonConnection(account) {
+    try {
+        // Get the messaging history domain
+        const domain = await getLivePersonDomain(account.account_id, account.service_name || 'msgHist');
+
+        // Build test URL (simple account info request)
+        const url = `https://${domain}/messaging_history/api/account/${account.account_id}/conversations/search`;
+
+        // Generate OAuth header
+        const authHeader = generateOAuthHeader(account, 'POST', url);
+
+        // Make test request with minimal payload
         const response = await fetch(url, {
             method: 'POST',
             headers: {
                 'Authorization': authHeader,
-                'Content-Type': 'application/json',
+                'Content-Type': 'application/json'
             },
-            body: JSON.stringify(requestBody),
+            body: JSON.stringify({
+                start: {
+                    from: Date.now() - 86400000, // Last 24 hours
+                    to: Date.now()
+                },
+                limit: 1
+            })
         });
 
         if (!response.ok) {
             const errorText = await response.text();
-            throw new Error(`LivePerson API error (${response.status}): ${errorText}`);
+            throw new Error(`Connection test failed: ${response.status} - ${errorText}`);
         }
-
-        const data = await response.json();
-        const convList = data.conversationHistoryRecords || [];
-
-        // Try to detect total count
-        if (totalExpected === null) {
-            totalExpected = data.totalHits || data.total || data?._metadata?.count || null;
-        }
-
-        // Process conversations
-        for (const conv of convList) {
-            const convId = conv.info?.conversationId || '';
-            const startTsRaw = conv.info?.startTs ?? conv.info?.start?.time ?? conv.info?.startTime;
-
-            // Safely convert timestamp to ISO string
-            let startTs = null;
-            if (startTsRaw) {
-                try {
-                    const timestamp = Number(startTsRaw);
-                    if (!isNaN(timestamp) && timestamp > 0) {
-                        const date = new Date(timestamp);
-                        if (!isNaN(date.getTime())) {
-                            startTs = date.toISOString();
-                        }
-                    }
-                } catch (error) {
-                    console.warn(`Invalid timestamp for conversation ${convId}:`, startTsRaw);
-                }
-            }
-
-            const transcript = buildTranscript(conv.messageRecords || []);
-
-            conversations.push({
-                external_id: convId,
-                conversation_date: startTs,
-                transcript_details: transcript,
-                raw_response: JSON.stringify(conv),
-                message_count: (conv.messageRecords || []).length,
-            });
-        }
-
-        offset += batchSize;
-        hasMore = convList.length === batchSize;
-
-        // Call progress callback
-        if (onProgress) {
-            onProgress(conversations.length, totalExpected);
-        }
-
-        // Rate limiting delay
-        if (hasMore) {
-            await new Promise((resolve) => setTimeout(resolve, 500));
-        }
-    }
-
-    return conversations;
-}
-
-/**
- * Test LivePerson account credentials
- * @param {object} credentials - OAuth credentials
- * @returns {Promise<object>} Test result
- */
-export async function testConnection(credentials) {
-    try {
-        const { accountId } = credentials;
-
-        // Try to discover msgHist domain as a connection test
-        const domain = await discoverServiceDomain(accountId, 'msgHist', credentials);
 
         return {
             success: true,
             message: 'Connection successful',
-            domain,
-            timestamp: new Date().toISOString(),
+            domain
         };
     } catch (error) {
         return {
             success: false,
-            message: error.message,
-            timestamp: new Date().toISOString(),
+            message: error.message
         };
     }
+}
+
+/**
+ * Fetch conversations from LivePerson
+ */
+export async function fetchLivePersonConversations(account, options = {}) {
+    try {
+        const { startDate, endDate, limit = 100, offset = 0, status } = options;
+
+        console.log('Fetching LP conversations with options:', options);
+
+        // Get the messaging history domain
+        const domain = await getLivePersonDomain(account.account_id, account.service_name || 'msgHist');
+        console.log('LP Domain:', domain);
+
+        // Build API URL with query params for offset and limit
+        const limitParam = Math.min(limit, 100);
+        const url = `https://${domain}${account.api_endpoint_path.replace('{accountId}', account.account_id)}?offset=${offset || 0}&limit=${limitParam}`;
+        console.log('API URL:', url);
+
+        // Build request payload (body only contains start, status, etc.)
+        const payload = {
+            start: {
+                from: startDate ? new Date(startDate).getTime() : Date.now() - 7 * 86400000,
+                to: endDate ? new Date(endDate).getTime() : Date.now()
+            }
+        };
+
+        // Add status filter if specified
+        if (status) {
+            payload.status = [status]; // LivePerson expects an array of statuses
+        }
+
+        console.log('Request payload:', JSON.stringify(payload, null, 2));
+        console.log('Date range:', {
+            from: new Date(payload.start.from).toISOString(),
+            to: new Date(payload.start.to).toISOString()
+        });
+
+        // Generate OAuth header
+        // Note: OAuth signature needs to include query params if they are in the URL
+        // The generateOAuthHeader function handles this if we pass the full URL
+        const authHeader = generateOAuthHeader(account, 'POST', url);
+
+        // Fetch conversations
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Authorization': authHeader,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('LP API Error:', response.status, errorText);
+            throw new Error(`Failed to fetch conversations: ${response.status} - ${errorText}`);
+        }
+
+        const data = await response.json();
+        console.log('LP API Response:', {
+            totalRecords: data._metadata?.count || 0,
+            hasRecords: !!data.conversationHistoryRecords,
+            recordCount: data.conversationHistoryRecords?.length || 0,
+            requestedLimit: limit,
+            requestedOffset: offset
+        });
+
+        // Process and store conversations (limit to requested amount)
+        const imported = await processAndStoreConversations(data, account, limit);
+
+        console.log(`Batch complete: Requested ${limit}, API returned ${data.conversationHistoryRecords?.length || 0}, Imported ${imported}`);
+
+        return {
+            success: true,
+            totalFetched: data._metadata?.count || 0,
+            imported,
+            apiReturned: data.conversationHistoryRecords?.length || 0,
+            message: `Successfully fetched ${imported} conversations`
+        };
+    } catch (error) {
+        console.error('Error fetching LP conversations:', error);
+        throw error;
+    }
+}
+
+/**
+ * Process and store LivePerson conversations in database
+ */
+async function processAndStoreConversations(data, account, limit = 100) {
+    let imported = 0;
+
+    if (!data.conversationHistoryRecords || !Array.isArray(data.conversationHistoryRecords)) {
+        return imported;
+    }
+
+    // Limit the number of conversations to process
+    const conversationsToProcess = data.conversationHistoryRecords.slice(0, limit);
+    console.log(`Processing ${conversationsToProcess.length} out of ${data.conversationHistoryRecords.length} conversations (limit: ${limit})`);
+
+    for (const record of conversationsToProcess) {
+        try {
+            const conversationId = `lp_${account.account_id}_${record.info.conversationId}`;
+
+            console.log('Processing conversation:', conversationId);
+            console.log('Participants:', JSON.stringify(record.info?.participants, null, 2));
+
+            // Build transcript from messages with correct speaker identification
+            const transcript = record.messageRecords
+                ?.map((msg) => {
+                    // LivePerson uses "sentBy" field with values "Agent" or "Consumer"
+                    let sender = 'Consumer'; // Default to Consumer as per reference script logic (though reference checks explicitly)
+
+                    if (msg.sentBy === 'Agent') {
+                        sender = 'Agent';
+                    } else if (msg.sentBy === 'Consumer') {
+                        sender = 'Consumer';
+                    } else {
+                        return null; // Skip system messages or others
+                    }
+
+                    let text = msg.messageData?.msg?.text || '';
+                    if (!text || String(text).trim() === '') return null;
+
+                    // Normalize internal newlines/whitespace to keep one line per message
+                    text = String(text).replace(/\r\n|\r|\n/g, ' ').replace(/\s+/g, ' ').trim();
+
+                    return `${sender}: ${text}`;
+                })
+                .filter(Boolean) // Remove nulls
+                .join('\n') || ''; // Join with newline instead of pipe
+
+            console.log('First 200 chars of transcript:', transcript.substring(0, 200));
+
+            // Calculate conversation date and duration
+            const startTime = record.info.startTime;
+            const endTime = record.info.endTime || Date.now();
+            const durationMinutes = (endTime - startTime) / 60000;
+
+            // Insert conversation
+            await runQuery(`
+                INSERT OR REPLACE INTO conversations 
+                (conversation_id, transcript_details, conversation_date, message_count, duration_minutes, source, external_id, fetched_at, lp_account_id, raw_lp_response)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `, [
+                conversationId,
+                transcript,
+                new Date(startTime).toISOString(),
+                record.messageRecords?.length || 0,
+                durationMinutes,
+                'liveperson',
+                record.info.conversationId,
+                new Date().toISOString(),
+                account.id,
+                JSON.stringify(record)
+            ]);
+
+            imported++;
+        } catch (error) {
+            console.error('Error storing conversation:', error);
+        }
+    }
+
+    return imported;
 }

@@ -1,25 +1,30 @@
 import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
-import { Download, Settings, Calendar, Filter, RefreshCw } from 'lucide-react';
-import api from '../utils/api';
-import LivePersonConfig from './LivePersonConfig';
+import api, { API_BASE_URL } from '../utils/api';
 
 export default function LivePersonFetch() {
     const [accounts, setAccounts] = useState([]);
-    const [selectedAccount, setSelectedAccount] = useState('');
-    const [showConfig, setShowConfig] = useState(false);
-    const [fetching, setFetching] = useState(false);
-    const [fetchResult, setFetchResult] = useState(null);
-
-    // Fetch parameters
-    const [datePreset, setDatePreset] = useState('24h');
-    const [customDateRange, setCustomDateRange] = useState({
-        from: '',
-        to: '',
+    const [loading, setLoading] = useState(true);
+    const [showAddForm, setShowAddForm] = useState(false);
+    const [editingAccount, setEditingAccount] = useState(null);
+    const [fetchParams, setFetchParams] = useState({
+        accountId: '',
+        datePreset: '7d', // Default to last 7 days
+        startDate: '',
+        endDate: '',
+        status: 'CLOSE' // OPEN, CLOSE, or both
     });
-    const [status, setStatus] = useState(['CLOSE']);
-    const [skillIds, setSkillIds] = useState('');
-    const [batchSize, setBatchSize] = useState(20);
+    const [fetchStatus, setFetchStatus] = useState(null);
+    const [formData, setFormData] = useState({
+        account_name: '',
+        consumer_key: '',
+        consumer_secret: '',
+        token: '',
+        token_secret: '',
+        account_id: '',
+        service_name: 'msgHist',
+        api_version: '1.0',
+        api_endpoint_path: '/messaging_history/api/account/{accountId}/conversations/search'
+    });
 
     useEffect(() => {
         loadAccounts();
@@ -27,467 +32,574 @@ export default function LivePersonFetch() {
 
     const loadAccounts = async () => {
         try {
-            const data = await api.getActiveLPAccounts();
+            setLoading(true);
+            const data = await api.getLPAccounts();
             setAccounts(data);
-            if (data.length > 0 && !selectedAccount) {
-                setSelectedAccount(data[0].id);
+        } catch (error) {
+            console.error('Failed to load accounts:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const getDateRangeFromPreset = (preset) => {
+        const now = new Date();
+        let startDate, endDate;
+
+        switch (preset) {
+            case '1h':
+                startDate = new Date(now.getTime() - 60 * 60 * 1000);
+                endDate = now;
+                break;
+            case '24h':
+                startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+                endDate = now;
+                break;
+            case '7d':
+                startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+                endDate = now;
+                break;
+            case '30d':
+                startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+                endDate = now;
+                break;
+            case '90d':
+                startDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+                endDate = now;
+                break;
+            case 'custom':
+                if (!fetchParams.startDate || !fetchParams.endDate) {
+                    throw new Error('Please select both start and end dates');
+                }
+                startDate = new Date(fetchParams.startDate);
+                endDate = new Date(fetchParams.endDate);
+
+                if (startDate > endDate) {
+                    throw new Error('Start date cannot be after end date');
+                }
+                break;
+            default:
+                startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+                endDate = now;
+        }
+
+        // Return ISO strings to preserve time information
+        return {
+            startDate: startDate.toISOString(),
+            endDate: endDate.toISOString()
+        };
+    };
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        try {
+            if (editingAccount) {
+                await api.updateLPAccount(editingAccount.id, formData);
+            } else {
+                await api.createLPAccount(formData);
+            }
+            setShowAddForm(false);
+            setEditingAccount(null);
+            resetForm();
+            loadAccounts();
+        } catch (error) {
+            alert('Error saving account: ' + error.message);
+        }
+    };
+
+    const handleEdit = (account) => {
+        setEditingAccount(account);
+        setFormData({
+            account_name: account.account_name,
+            consumer_key: account.consumer_key,
+            consumer_secret: account.consumer_secret,
+            token: account.token,
+            token_secret: account.token_secret,
+            account_id: account.account_id,
+            service_name: account.service_name || 'msgHist',
+            api_version: account.api_version || '1.0',
+            api_endpoint_path: account.api_endpoint_path || '/messaging_history/api/account/{accountId}/conversations/search'
+        });
+        setShowAddForm(true);
+    };
+
+    const handleDelete = async (id) => {
+        if (!confirm('Are you sure you want to delete this account?')) return;
+        try {
+            await api.deleteLPAccount(id);
+            loadAccounts();
+        } catch (error) {
+            alert('Error deleting account: ' + error.message);
+        }
+    };
+
+    const handleToggle = async (id, currentStatus) => {
+        try {
+            await api.toggleLPAccount(id, !currentStatus);
+            loadAccounts();
+        } catch (error) {
+            alert('Error toggling account: ' + error.message);
+        }
+    };
+
+    const handleTest = async (id) => {
+        try {
+            const result = await api.testLPConnection(id);
+            if (result.success) {
+                alert(`✓ Connection successful!\nDomain: ${result.domain}`);
+            } else {
+                alert(`✗ Connection failed:\n${result.message}`);
             }
         } catch (error) {
-            console.error('Error loading accounts:', error);
+            alert('Error testing connection: ' + error.message);
         }
     };
-
-    const getDateRange = () => {
-        if (datePreset === 'custom') {
-            if (!customDateRange.from || !customDateRange.to) {
-                throw new Error('Please select both start and end dates');
-            }
-            return {
-                from: new Date(customDateRange.from).getTime(),
-                to: new Date(customDateRange.to).getTime(),
-            };
-        }
-
-        const now = Date.now();
-        const presets = {
-            '1h': 60 * 60 * 1000,
-            '24h': 24 * 60 * 60 * 1000,
-            '7d': 7 * 24 * 60 * 60 * 1000,
-            '30d': 30 * 24 * 60 * 60 * 1000,
-        };
-
-        const offset = presets[datePreset] || presets['24h'];
-        return {
-            from: now - offset,
-            to: now,
-        };
-    };
-
-    const [progress, setProgress] = useState(null);
-    const [logs, setLogs] = useState([]);
 
     const handleFetch = async () => {
-        if (!selectedAccount) {
+        if (!fetchParams.accountId) {
             alert('Please select an account');
             return;
         }
 
         try {
-            setFetching(true);
-            setFetchResult(null);
-            setProgress(null);
-            setLogs([]);
+            setFetchStatus({ loading: true, message: 'Starting fetch...' });
 
-            const dateRange = getDateRange();
-            const skillIdArray = skillIds
-                .split(',')
-                .map(id => id.trim())
-                .filter(id => id && !isNaN(id))
-                .map(id => Number(id));
+            // Get actual date range from preset or custom dates
+            const dateRange = getDateRangeFromPreset(fetchParams.datePreset);
 
-            const response = await fetch('http://localhost:3000/api/liveperson/fetch-stream', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    accountId: selectedAccount,
-                    dateRange,
-                    status,
-                    skillIds: skillIdArray,
-                    batchSize,
-                }),
-            });
+            let totalImported = 0;
+            let batchesFetched = 0;
+            let hasMore = true;
+            let offset = 0;
+            const BATCH_SIZE = 50; // LivePerson API max limit
+            let totalExpected = 0; // Track total expected records from first batch
 
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-            let buffer = '';
+            // Fetch all conversations in batches
+            while (hasMore) {
+                // Safety break to prevent infinite loops
+                if (batchesFetched > 100) {
+                    console.warn('Safety break: Reached 100 batches, stopping.');
+                    break;
+                }
 
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
+                setFetchStatus({
+                    loading: true,
+                    message: `Fetching batch ${batchesFetched + 1}... (${totalImported} imported so far)`
+                });
 
-                buffer += decoder.decode(value, { stream: true });
-                const lines = buffer.split('\n');
-                buffer = lines.pop(); // Keep incomplete line in buffer
+                const result = await api.fetchLPConversations({
+                    accountId: fetchParams.accountId,
+                    startDate: dateRange.startDate,
+                    endDate: dateRange.endDate,
+                    limit: BATCH_SIZE,
+                    offset: offset,
+                    status: fetchParams.status
+                });
 
-                for (const line of lines) {
-                    if (!line.trim()) continue;
+                console.log(`Batch ${batchesFetched + 1}: imported ${result.imported}, API returned ${result.apiReturned || result.imported}`);
 
-                    try {
-                        const event = JSON.parse(line);
+                // Capture total expected from the first batch (or any batch that reports it)
+                if (result.totalFetched > 0 && totalExpected === 0) {
+                    totalExpected = result.totalFetched;
+                    console.log(`Total records expected: ${totalExpected}`);
+                }
 
-                        switch (event.type) {
-                            case 'progress':
-                                setProgress({
-                                    current: event.current,
-                                    total: event.total,
-                                    status: 'Fetching conversations...'
-                                });
-                                break;
-                            case 'saving':
-                                setProgress(prev => ({
-                                    ...prev,
-                                    current: event.current,
-                                    total: event.total,
-                                    status: 'Saving to database...'
-                                }));
-                                break;
-                            case 'log':
-                                setLogs(prev => [...prev, event.message]);
-                                break;
-                            case 'complete':
-                                setFetchResult({
-                                    success: event.success,
-                                    total: event.total,
-                                    new: event.new,
-                                    updated: event.updated
-                                });
-                                break;
-                            case 'error':
-                                throw new Error(event.message);
-                        }
-                    } catch (e) {
-                        console.error('Error parsing stream:', e);
+                totalImported += result.imported;
+                batchesFetched++;
+
+                // Stop if we have fetched all expected records based on metadata
+                if (totalExpected > 0 && totalImported >= totalExpected) {
+                    hasMore = false;
+                    console.log(`Stopping pagination: Reached total expected records (${totalExpected})`);
+                }
+                // Fallback: Stop if no conversations were returned or if we got fewer than the batch size
+                else {
+                    const actualReturned = result.apiReturned || result.imported;
+                    if (actualReturned === 0 || actualReturned < BATCH_SIZE) {
+                        hasMore = false;
+                        console.log(`Stopping pagination: returned ${actualReturned} conversations (last batch)`);
+                    } else {
+                        offset += actualReturned;
+                        console.log(`Continuing to next batch with offset ${offset}`);
                     }
                 }
             }
+
+            setFetchStatus({
+                loading: false,
+                success: true,
+                message: `Successfully fetched ${totalImported} conversations`,
+                imported: totalImported
+            });
         } catch (error) {
-            alert('Error fetching conversations: ' + error.message);
-            setFetchResult({ success: false, error: error.message });
-        } finally {
-            setFetching(false);
-            setProgress(null);
+            setFetchStatus({
+                loading: false,
+                success: false,
+                message: error.message
+            });
+        }
+    };
+
+    const resetForm = () => {
+        setFormData({
+            account_name: '',
+            consumer_key: '',
+            consumer_secret: '',
+            token: '',
+            token_secret: '',
+            account_id: '',
+            service_name: 'msgHist',
+            api_version: '1.0',
+            api_endpoint_path: '/messaging_history/api/account/{accountId}/conversations/search'
+        });
+    };
+
+    const handleExport = async () => {
+        if (!fetchParams.accountId) {
+            alert('Please select an account');
+            return;
+        }
+
+        try {
+            // Get actual date range
+            const dateRange = getDateRangeFromPreset(fetchParams.datePreset);
+
+            // Build query params
+            const params = new URLSearchParams({
+                accountId: fetchParams.accountId,
+                startDate: dateRange.startDate,
+                endDate: dateRange.endDate
+            });
+
+            if (fetchParams.status) {
+                params.append('status', fetchParams.status);
+            }
+
+            // Trigger download
+            // Trigger download
+            window.location.href = `${API_BASE_URL}/liveperson/export?${params.toString()}`;
+
+        } catch (error) {
+            console.error('Export failed:', error);
+            alert('Failed to export CSV: ' + error.message);
         }
     };
 
     return (
-        <div className="container mx-auto p-4">
-            {/* Header */}
-            <div className="flex justify-between items-center mb-6">
-                <div>
-                    <h1 className="text-3xl font-bold">Fetch from LivePerson</h1>
-                    <p className="text-secondary mt-1">
-                        Import conversations directly from your LivePerson account
-                    </p>
-                </div>
-                <button
-                    onClick={() => setShowConfig(true)}
-                    className="btn btn-secondary"
-                >
-                    <Settings size={20} />
-                    Manage Accounts
-                </button>
+        <div className="container" style={{ padding: '2rem 0' }}>
+            <div className="mb-xl">
+                <h1 className="text-2xl font-bold">LivePerson Integration</h1>
+                <p className="text-secondary mt-sm">
+                    Connect to LivePerson accounts and fetch conversation data
+                </p>
             </div>
 
-            {/* Main Content */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Configuration Panel */}
-                <div className="lg:col-span-2 space-y-4">
-                    {/* Account Selection */}
-                    <div className="card bg-base-200 p-6">
-                        <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-                            <Filter size={20} />
-                            Account & Filters
-                        </h2>
+            {/* Account Management */}
+            <div className="card mb-lg">
+                <div className="p-md border-b border-border flex justify-between items-center">
+                    <h2 className="text-lg font-semibold">LivePerson Accounts</h2>
+                    <button
+                        onClick={() => {
+                            setShowAddForm(!showAddForm);
+                            setEditingAccount(null);
+                            resetForm();
+                        }}
+                        className="btn btn-primary"
+                    >
+                        {showAddForm ? 'Cancel' : '+ Add Account'}
+                    </button>
+                </div>
 
-                        <div className="space-y-4">
-                            {/* Account Selector */}
-                            <div className="form-control">
-                                <label className="label">
-                                    <span className="label-text font-semibold">LivePerson Account</span>
-                                </label>
-                                {accounts.length === 0 ? (
-                                    <div className="alert alert-warning">
-                                        <span>No active accounts configured.</span>
-                                        <button
-                                            onClick={() => setShowConfig(true)}
-                                            className="btn btn-sm btn-primary"
-                                        >
-                                            Add Account
-                                        </button>
-                                    </div>
-                                ) : (
-                                    <select
-                                        className="select select-bordered w-full"
-                                        value={selectedAccount}
-                                        onChange={(e) => setSelectedAccount(e.target.value)}
-                                    >
-                                        {accounts.map((account) => (
-                                            <option key={account.id} value={account.id}>
-                                                {account.account_name} (ID: {account.account_id})
-                                            </option>
-                                        ))}
-                                    </select>
-                                )}
-                            </div>
-
-                            {/* Date Range */}
-                            <div className="form-control">
-                                <label className="label">
-                                    <span className="label-text font-semibold">Date Range</span>
-                                </label>
-                                <div className="flex gap-2">
-                                    <button
-                                        onClick={() => setDatePreset('1h')}
-                                        className={`btn btn-sm ${datePreset === '1h' ? 'btn-primary' : 'btn-ghost'}`}
-                                    >
-                                        Last Hour
-                                    </button>
-                                    <button
-                                        onClick={() => setDatePreset('24h')}
-                                        className={`btn btn-sm ${datePreset === '24h' ? 'btn-primary' : 'btn-ghost'}`}
-                                    >
-                                        Last 24h
-                                    </button>
-                                    <button
-                                        onClick={() => setDatePreset('7d')}
-                                        className={`btn btn-sm ${datePreset === '7d' ? 'btn-primary' : 'btn-ghost'}`}
-                                    >
-                                        Last 7 Days
-                                    </button>
-                                    <button
-                                        onClick={() => setDatePreset('30d')}
-                                        className={`btn btn-sm ${datePreset === '30d' ? 'btn-primary' : 'btn-ghost'}`}
-                                    >
-                                        Last 30 Days
-                                    </button>
-                                    <button
-                                        onClick={() => setDatePreset('custom')}
-                                        className={`btn btn-sm ${datePreset === 'custom' ? 'btn-primary' : 'btn-ghost'}`}
-                                    >
-                                        <Calendar size={16} />
-                                        Custom
-                                    </button>
-                                </div>
-                            </div>
-
-                            {/* Custom Date Range */}
-                            {datePreset === 'custom' && (
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="form-control">
-                                        <label className="label">
-                                            <span className="label-text">Start Date & Time</span>
-                                        </label>
-                                        <input
-                                            type="datetime-local"
-                                            className="input input-bordered"
-                                            value={customDateRange.from}
-                                            onChange={(e) =>
-                                                setCustomDateRange({ ...customDateRange, from: e.target.value })
-                                            }
-                                        />
-                                    </div>
-                                    <div className="form-control">
-                                        <label className="label">
-                                            <span className="label-text">End Date & Time</span>
-                                        </label>
-                                        <input
-                                            type="datetime-local"
-                                            className="input input-bordered"
-                                            value={customDateRange.to}
-                                            onChange={(e) =>
-                                                setCustomDateRange({ ...customDateRange, to: e.target.value })
-                                            }
-                                        />
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Status Filter */}
-                            <div className="form-control">
-                                <label className="label">
-                                    <span className="label-text font-semibold">Conversation Status</span>
-                                </label>
-                                <div className="flex gap-2">
-                                    <label className="label cursor-pointer gap-2">
-                                        <input
-                                            type="checkbox"
-                                            className="checkbox checkbox-sm"
-                                            checked={status.includes('CLOSE')}
-                                            onChange={(e) => {
-                                                if (e.target.checked) {
-                                                    setStatus([...status, 'CLOSE']);
-                                                } else {
-                                                    setStatus(status.filter(s => s !== 'CLOSE'));
-                                                }
-                                            }}
-                                        />
-                                        <span className="label-text">Closed</span>
-                                    </label>
-                                    <label className="label cursor-pointer gap-2">
-                                        <input
-                                            type="checkbox"
-                                            className="checkbox checkbox-sm"
-                                            checked={status.includes('OPEN')}
-                                            onChange={(e) => {
-                                                if (e.target.checked) {
-                                                    setStatus([...status, 'OPEN']);
-                                                } else {
-                                                    setStatus(status.filter(s => s !== 'OPEN'));
-                                                }
-                                            }}
-                                        />
-                                        <span className="label-text">Open</span>
-                                    </label>
-                                </div>
-                            </div>
-
-                            {/* Skill IDs */}
-                            <div className="form-control">
-                                <label className="label">
-                                    <span className="label-text font-semibold">Skill IDs (Optional)</span>
-                                </label>
+                {showAddForm && (
+                    <div className="p-md border-b border-border bg-tertiary">
+                        <h3 className="font-semibold mb-md">
+                            {editingAccount ? 'Edit Account' : 'New Account'}
+                        </h3>
+                        <form onSubmit={handleSubmit} className="grid grid-2 gap-md">
+                            <div>
+                                <label className="block text-sm font-medium mb-xs">Account Name *</label>
                                 <input
                                     type="text"
-                                    className="input input-bordered"
-                                    placeholder="e.g., 3127625870, 3127625871"
-                                    value={skillIds}
-                                    onChange={(e) => setSkillIds(e.target.value)}
+                                    className="input w-full"
+                                    value={formData.account_name}
+                                    onChange={(e) => setFormData({ ...formData, account_name: e.target.value })}
+                                    required
                                 />
-                                <label className="label">
-                                    <span className="label-text-alt">Comma-separated. Leave empty for all skills.</span>
-                                </label>
                             </div>
-
-                            {/* Batch Size */}
-                            <div className="form-control">
-                                <label className="label">
-                                    <span className="label-text font-semibold">Batch Size</span>
-                                </label>
+                            <div>
+                                <label className="block text-sm font-medium mb-xs">Account ID *</label>
                                 <input
-                                    type="number"
-                                    className="input input-bordered"
-                                    min="1"
-                                    max="100"
-                                    value={batchSize}
-                                    onChange={(e) => setBatchSize(Number(e.target.value))}
+                                    type="text"
+                                    className="input w-full"
+                                    value={formData.account_id}
+                                    onChange={(e) => setFormData({ ...formData, account_id: e.target.value })}
+                                    required
                                 />
-                                <label className="label">
-                                    <span className="label-text-alt">Conversations per API call (1-100)</span>
-                                </label>
                             </div>
-                        </div>
+                            <div>
+                                <label className="block text-sm font-medium mb-xs">Consumer Key *</label>
+                                <input
+                                    type="text"
+                                    className="input w-full"
+                                    value={formData.consumer_key}
+                                    onChange={(e) => setFormData({ ...formData, consumer_key: e.target.value })}
+                                    required
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium mb-xs">Consumer Secret *</label>
+                                <input
+                                    type="password"
+                                    className="input w-full"
+                                    value={formData.consumer_secret}
+                                    onChange={(e) => setFormData({ ...formData, consumer_secret: e.target.value })}
+                                    required
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium mb-xs">Token *</label>
+                                <input
+                                    type="text"
+                                    className="input w-full"
+                                    value={formData.token}
+                                    onChange={(e) => setFormData({ ...formData, token: e.target.value })}
+                                    required
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium mb-xs">Token Secret *</label>
+                                <input
+                                    type="password"
+                                    className="input w-full"
+                                    value={formData.token_secret}
+                                    onChange={(e) => setFormData({ ...formData, token_secret: e.target.value })}
+                                    required
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium mb-xs">Service Name</label>
+                                <input
+                                    type="text"
+                                    className="input w-full"
+                                    value={formData.service_name}
+                                    onChange={(e) => setFormData({ ...formData, service_name: e.target.value })}
+                                    placeholder="msgHist"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium mb-xs">API Version</label>
+                                <input
+                                    type="text"
+                                    className="input w-full"
+                                    value={formData.api_version}
+                                    onChange={(e) => setFormData({ ...formData, api_version: e.target.value })}
+                                    placeholder="1.0"
+                                />
+                            </div>
+                            <div className="col-span-2">
+                                <label className="block text-sm font-medium mb-xs">API Endpoint Path</label>
+                                <input
+                                    type="text"
+                                    className="input w-full"
+                                    value={formData.api_endpoint_path}
+                                    onChange={(e) => setFormData({ ...formData, api_endpoint_path: e.target.value })}
+                                    placeholder="/messaging_history/api/account/{accountId}/conversations/search"
+                                />
+                            </div>
+                            <div className="col-span-2 flex gap-sm justify-end">
+                                <button type="button" onClick={() => { setShowAddForm(false); resetForm(); }} className="btn btn-secondary">
+                                    Cancel
+                                </button>
+                                <button type="submit" className="btn btn-primary">
+                                    {editingAccount ? 'Update' : 'Create'} Account
+                                </button>
+                            </div>
+                        </form>
                     </div>
+                )}
 
-                    {/* Action Button */}
-                    {fetching && progress ? (
-                        <div className="space-y-4">
-                            <div className="w-full bg-base-300 rounded-full h-4 overflow-hidden">
-                                <div
-                                    className="bg-primary h-full transition-all duration-300 ease-in-out"
-                                    style={{
-                                        width: `${progress.total ? Math.min((progress.current / progress.total) * 100, 100) : 0}%`
-                                    }}
-                                ></div>
-                            </div>
-                            <div className="flex justify-between text-sm text-secondary">
-                                <span>{progress.status}</span>
-                                <span>{progress.current} / {progress.total || '?'}</span>
-                            </div>
-
-                            {/* Logs */}
-                            <div className="bg-base-300 p-3 rounded-lg text-xs font-mono h-32 overflow-y-auto">
-                                {logs.map((log, i) => (
-                                    <div key={i} className="text-secondary">{log}</div>
-                                ))}
-                                <div ref={(el) => el?.scrollIntoView({ behavior: 'smooth' })} />
-                            </div>
+                <div className="p-md">
+                    {loading ? (
+                        <div className="flex justify-center p-xl">
+                            <div className="spinner"></div>
                         </div>
+                    ) : accounts.length === 0 ? (
+                        <p className="text-center text-secondary p-xl">No LivePerson accounts configured</p>
                     ) : (
-                        <button
-                            onClick={handleFetch}
-                            disabled={fetching || accounts.length === 0}
-                            className="btn btn-primary btn-lg w-full"
-                        >
-                            {fetching ? (
-                                <>
-                                    <div className="loading loading-spinner"></div>
-                                    Starting Fetch...
-                                </>
-                            ) : (
-                                <>
-                                    <Download size={20} />
-                                    Fetch Conversations
-                                </>
-                            )}
-                        </button>
+                        <table className="table w-full">
+                            <thead>
+                                <tr>
+                                    <th>Account Name</th>
+                                    <th>Account ID</th>
+                                    <th>Status</th>
+                                    <th>Created</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {accounts.map((account) => (
+                                    <tr key={account.id}>
+                                        <td className="font-semibold">{account.account_name}</td>
+                                        <td className="font-mono text-sm">{account.account_id}</td>
+                                        <td>
+                                            <span className={`badge ${account.is_active ? 'badge-success' : 'badge-secondary'}`}>
+                                                {account.is_active ? 'Active' : 'Inactive'}
+                                            </span>
+                                        </td>
+                                        <td className="text-sm text-secondary">
+                                            {new Date(account.created_at).toLocaleDateString()}
+                                        </td>
+                                        <td>
+                                            <div className="flex gap-xs">
+                                                <button
+                                                    onClick={() => handleTest(account.id)}
+                                                    className="btn btn-sm btn-secondary"
+                                                    title="Test Connection"
+                                                >
+                                                    🔌 Test
+                                                </button>
+                                                <button
+                                                    onClick={() => handleToggle(account.id, account.is_active)}
+                                                    className="btn btn-sm btn-secondary"
+                                                    title={account.is_active ? 'Deactivate' : 'Activate'}
+                                                >
+                                                    {account.is_active ? '⏸️' : '▶️'}
+                                                </button>
+                                                <button
+                                                    onClick={() => handleEdit(account)}
+                                                    className="btn btn-sm btn-secondary"
+                                                    title="Edit"
+                                                >
+                                                    ✏️
+                                                </button>
+                                                <button
+                                                    onClick={() => handleDelete(account.id)}
+                                                    className="btn btn-sm btn-danger"
+                                                    title="Delete"
+                                                >
+                                                    🗑️
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
                     )}
-                </div>
-
-                {/* Results Panel */}
-                <div className="lg:col-span-1">
-                    <div className="card bg-base-200 p-6 sticky top-4">
-                        <h2 className="text-xl font-semibold mb-4">Results</h2>
-
-                        {!fetchResult ? (
-                            <div className="text-center text-secondary py-8">
-                                <p>No fetch results yet.</p>
-                                <p className="text-sm mt-2">Configure filters and click "Fetch Conversations"</p>
-                            </div>
-                        ) : (
-                            <motion.div
-                                initial={{ opacity: 0, y: 20 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                className="space-y-4"
-                            >
-                                {fetchResult.success ? (
-                                    <>
-                                        <div className="alert alert-success">
-                                            <span>✅ Fetch completed successfully!</span>
-                                        </div>
-
-                                        <div className="stats stats-vertical shadow w-full">
-                                            <div className="stat">
-                                                <div className="stat-title">Total Fetched</div>
-                                                <div className="stat-value text-primary">{fetchResult.total}</div>
-                                            </div>
-                                            <div className="stat">
-                                                <div className="stat-title">New Conversations</div>
-                                                <div className="stat-value text-success">{fetchResult.new}</div>
-                                            </div>
-                                            <div className="stat">
-                                                <div className="stat-title">Updated</div>
-                                                <div className="stat-value text-info">{fetchResult.updated}</div>
-                                            </div>
-                                        </div>
-
-                                        <div className="flex flex-col gap-2">
-                                            <a href="#/analysis" className="btn btn-secondary btn-sm">
-                                                View in Analysis
-                                            </a>
-                                            <a
-                                                href={`http://localhost:3000/api/liveperson/export-csv?accountId=${selectedAccount}`}
-                                                download
-                                                className="btn btn-accent btn-sm"
-                                            >
-                                                <Download size={16} />
-                                                Export to CSV
-                                            </a>
-                                            <button className="btn btn-ghost btn-sm" onClick={() => setFetchResult(null)}>
-                                                <RefreshCw size={16} />
-                                                Clear Results
-                                            </button>
-                                        </div>
-                                    </>
-                                ) : (
-                                    <div className="alert alert-error">
-                                        <span>❌ {fetchResult.error || 'Fetch failed'}</span>
-                                    </div>
-                                )}
-                            </motion.div>
-                        )}
-                    </div>
                 </div>
             </div>
 
-            {/* Config Modal */}
-            {showConfig && (
-                <LivePersonConfig
-                    onClose={() => setShowConfig(false)}
-                    onAccountCreated={loadAccounts}
-                />
-            )}
+            {/* Fetch Conversations */}
+            <div className="card">
+                <div className="p-md border-b border-border">
+                    <h2 className="text-lg font-semibold">Fetch Conversations</h2>
+                    <p className="text-sm text-secondary mt-xs">Import conversations from LivePerson</p>
+                </div>
+                <div className="p-md">
+                    <div className="grid grid-2 gap-md mb-md">
+                        <div>
+                            <label className="block text-sm font-medium mb-xs">Account</label>
+                            <select
+                                className="input w-full"
+                                value={fetchParams.accountId}
+                                onChange={(e) => setFetchParams({ ...fetchParams, accountId: e.target.value })}
+                            >
+                                <option value="">Select an account...</option>
+                                {accounts.filter(a => a.is_active).map((account) => (
+                                    <option key={account.id} value={account.id}>
+                                        {account.account_name}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium mb-xs">Conversation Status</label>
+                            <select
+                                className="input w-full"
+                                value={fetchParams.status}
+                                onChange={(e) => setFetchParams({ ...fetchParams, status: e.target.value })}
+                            >
+                                <option value="CLOSE">Closed Conversations</option>
+                                <option value="OPEN">Open Conversations</option>
+                                <option value="">All Conversations (Open + Closed)</option>
+                            </select>
+                        </div>
+                        <div className="col-span-2">
+                            <label className="block text-sm font-medium mb-xs">Date Range</label>
+                            <select
+                                className="input w-full"
+                                value={fetchParams.datePreset}
+                                onChange={(e) => setFetchParams({ ...fetchParams, datePreset: e.target.value })}
+                            >
+                                <option value="1h">Last Hour</option>
+                                <option value="24h">Last 24 Hours</option>
+                                <option value="7d">Last 7 Days</option>
+                                <option value="30d">Last 30 Days</option>
+                                <option value="90d">Last 90 Days</option>
+                                <option value="custom">Custom Range</option>
+                            </select>
+                        </div>
+                        {fetchParams.datePreset === 'custom' && (
+                            <>
+                                <div>
+                                    <label className="block text-sm font-medium mb-xs">Start Date & Time</label>
+                                    <input
+                                        type="datetime-local"
+                                        className="input w-full"
+                                        value={fetchParams.startDate}
+                                        onChange={(e) => setFetchParams({ ...fetchParams, startDate: e.target.value })}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium mb-xs">End Date & Time</label>
+                                    <input
+                                        type="datetime-local"
+                                        className="input w-full"
+                                        value={fetchParams.endDate}
+                                        onChange={(e) => setFetchParams({ ...fetchParams, endDate: e.target.value })}
+                                    />
+                                </div>
+                            </>
+                        )}
+                    </div>
+
+                    <div className="flex gap-md">
+                        <button
+                            onClick={handleFetch}
+                            disabled={!fetchParams.accountId || fetchStatus?.loading}
+                            className="btn btn-primary flex-1"
+                        >
+                            {fetchStatus?.loading ? (
+                                <span>⏳ {fetchStatus.message || 'Fetching...'}</span>
+                            ) : (
+                                '📥 Fetch Conversations'
+                            )}
+                        </button>
+
+                        <button
+                            onClick={handleExport}
+                            disabled={!fetchParams.accountId || fetchStatus?.loading}
+                            className="btn btn-secondary"
+                            title="Export fetched conversations to CSV"
+                        >
+                            📤 Export CSV
+                        </button>
+                    </div>
+
+                    {fetchStatus && !fetchStatus.loading && (
+                        <div className={`mt-md p-md rounded-lg ${fetchStatus.success ? 'bg-green-500/10 border border-green-500' : 'bg-red-500/10 border border-red-500'}`}>
+                            <p className={fetchStatus.success ? 'text-green-500' : 'text-red-500'}>
+                                {fetchStatus.success ? '✓' : '✗'} {fetchStatus.message}
+                            </p>
+                            {fetchStatus.success && fetchStatus.imported > 0 && (
+                                <p className="text-sm text-secondary mt-xs">
+                                    Go to the Analysis tab to analyze them.
+                                </p>
+                            )}
+                        </div>
+                    )}
+                </div>
+            </div>
         </div>
     );
 }

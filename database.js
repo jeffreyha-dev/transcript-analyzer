@@ -54,6 +54,9 @@ function initDatabase() {
           token TEXT NOT NULL,
           token_secret TEXT NOT NULL,
           account_id TEXT NOT NULL,
+          service_name TEXT DEFAULT 'msgHist',
+          api_version TEXT DEFAULT '1.0',
+          api_endpoint_path TEXT DEFAULT '/messaging_history/api/account/{accountId}/conversations/search',
           is_active BOOLEAN DEFAULT 1,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -492,8 +495,8 @@ async function createLPAccount(accountData) {
 
   const sql = `
     INSERT INTO liveperson_accounts 
-    (account_name, consumer_key, consumer_secret, token, token_secret, account_id, service_name, api_version, api_endpoint_path)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    (account_name, consumer_key, consumer_secret, token, token_secret, account_id, service_name, api_version, api_endpoint_path, is_active)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
   `;
 
   return runQuery(sql, [
