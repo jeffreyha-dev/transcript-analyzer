@@ -210,10 +210,13 @@ router.get('/dashboard', async (req, res) => {
     `);
 
         res.json({
-            totalConversations: stats.total_conversations,
-            avgSentiment: stats.avg_sentiment,
-            avgCSAT: stats.avg_csat,
-            avgAgentScore: stats.avg_agent_score,
+            overview: {
+                totalConversations: totalConv.count,
+                totalAnalyzed: totalAnalyzed.count,
+                avgSentiment: stats.avg_sentiment,
+                avgCSAT: stats.avg_csat,
+                avgAgentScore: stats.avg_agent_score
+            },
             sentimentDistribution: sentimentDist,
             recentConversations
         });

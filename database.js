@@ -429,33 +429,35 @@ async function getHeatmapData(dateRange = 'all', sentimentFilter = 'all') {
   return getAll(sql);
 }
 
-async function getTopicClusters(dateRange, sentimentFilter) {
-  let query = `
-        SELECT 
-            conversation_id,
-            overall_sentiment,
-            customer_satisfaction_score,
-            sentiment_label,
-            topics,
-            analyzed_at
-        FROM ai_analysis_results
-        WHERE 1=1
-    `;
-  const params = [];
-
-  if (dateRange && dateRange.start && dateRange.end) {
-    query += ' AND analyzed_at BETWEEN ? AND ?';
-    params.push(dateRange.start, dateRange.end);
+async function getTopicClusters(dateRange = 'all', sentimentFilter = 'all') {
+  let dateFilter = '1=1';
+  if (dateRange !== 'all') {
+    const days = parseInt(dateRange.replace('d', ''));
+    dateFilter = `analyzed_at >= datetime('now', '-${days} days')`;
   }
 
-  if (sentimentFilter) {
-    query += ' AND sentiment_label = ?';
-    params.push(sentimentFilter);
+  let sentimentCondition = '1=1';
+  if (sentimentFilter !== 'all') {
+    if (sentimentFilter === 'positive') sentimentCondition = "sentiment_label = 'Positive' OR sentiment_label = 'Very Positive'";
+    else if (sentimentFilter === 'negative') sentimentCondition = "sentiment_label = 'Negative' OR sentiment_label = 'Very Negative'";
+    else sentimentCondition = `sentiment_label = '${sentimentFilter}'`;
   }
 
-  query += ' ORDER BY analyzed_at DESC LIMIT 500';
+  const query = `
+    SELECT 
+      conversation_id,
+      overall_sentiment,
+      customer_satisfaction_score,
+      sentiment_label,
+      topics,
+      analyzed_at
+    FROM analysis_results
+    WHERE ${dateFilter} AND ${sentimentCondition}
+    ORDER BY analyzed_at DESC 
+    LIMIT 500
+  `;
 
-  return getAll(query, params);
+  return getAll(query);
 }
 
 export { initDatabase, runQuery, getOne, getAll, getHeatmapData, getTopicClusters };

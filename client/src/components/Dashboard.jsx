@@ -73,14 +73,14 @@ export default function Dashboard() {
                 </div>
 
                 <div className="stat-card">
-                    <div className="stat-value" style={{ background: getSentimentGradient(overview?.avgSentiment) }}>
+                    <div className="stat-value" style={{ backgroundImage: getSentimentGradient(overview?.avgSentiment) }}>
                         {overview?.avgSentiment || 0}
                     </div>
                     <div className="stat-label">Avg Sentiment Score</div>
                 </div>
 
                 <div className="stat-card">
-                    <div className="stat-value" style={{ background: 'var(--gradient-success)' }}>
+                    <div className="stat-value" style={{ backgroundImage: 'var(--gradient-success)' }}>
                         {overview?.avgAgentScore || 0}
                     </div>
                     <div className="stat-label">Avg Agent Score</div>
