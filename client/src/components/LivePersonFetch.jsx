@@ -63,6 +63,9 @@ export default function LivePersonFetch() {
         };
     };
 
+    const [progress, setProgress] = useState(null);
+    const [logs, setLogs] = useState([]);
+
     const handleFetch = async () => {
         if (!selectedAccount) {
             alert('Please select an account');
@@ -72,6 +75,8 @@ export default function LivePersonFetch() {
         try {
             setFetching(true);
             setFetchResult(null);
+            setProgress(null);
+            setLogs([]);
 
             const dateRange = getDateRange();
             const skillIdArray = skillIds
@@ -80,19 +85,79 @@ export default function LivePersonFetch() {
                 .filter(id => id && !isNaN(id))
                 .map(id => Number(id));
 
-            const result = await api.fetchLPConversations({
-                accountId: selectedAccount,
-                dateRange,
-                status,
-                skillIds: skillIdArray,
-                batchSize,
+            const response = await fetch('http://localhost:3000/api/liveperson/fetch-stream', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    accountId: selectedAccount,
+                    dateRange,
+                    status,
+                    skillIds: skillIdArray,
+                    batchSize,
+                }),
             });
 
-            setFetchResult(result);
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop(); // Keep incomplete line in buffer
+
+                for (const line of lines) {
+                    if (!line.trim()) continue;
+
+                    try {
+                        const event = JSON.parse(line);
+
+                        switch (event.type) {
+                            case 'progress':
+                                setProgress({
+                                    current: event.current,
+                                    total: event.total,
+                                    status: 'Fetching conversations...'
+                                });
+                                break;
+                            case 'saving':
+                                setProgress(prev => ({
+                                    ...prev,
+                                    current: event.current,
+                                    total: event.total,
+                                    status: 'Saving to database...'
+                                }));
+                                break;
+                            case 'log':
+                                setLogs(prev => [...prev, event.message]);
+                                break;
+                            case 'complete':
+                                setFetchResult({
+                                    success: event.success,
+                                    total: event.total,
+                                    new: event.new,
+                                    updated: event.updated
+                                });
+                                break;
+                            case 'error':
+                                throw new Error(event.message);
+                        }
+                    } catch (e) {
+                        console.error('Error parsing stream:', e);
+                    }
+                }
+            }
         } catch (error) {
             alert('Error fetching conversations: ' + error.message);
+            setFetchResult({ success: false, error: error.message });
         } finally {
             setFetching(false);
+            setProgress(null);
         }
     };
 
@@ -306,23 +371,48 @@ export default function LivePersonFetch() {
                     </div>
 
                     {/* Action Button */}
-                    <button
-                        onClick={handleFetch}
-                        disabled={fetching || accounts.length === 0}
-                        className="btn btn-primary btn-lg w-full"
-                    >
-                        {fetching ? (
-                            <>
-                                <div className="loading loading-spinner"></div>
-                                Fetching Conversations...
-                            </>
-                        ) : (
-                            <>
-                                <Download size={20} />
-                                Fetch Conversations
-                            </>
-                        )}
-                    </button>
+                    {fetching && progress ? (
+                        <div className="space-y-4">
+                            <div className="w-full bg-base-300 rounded-full h-4 overflow-hidden">
+                                <div
+                                    className="bg-primary h-full transition-all duration-300 ease-in-out"
+                                    style={{
+                                        width: `${progress.total ? Math.min((progress.current / progress.total) * 100, 100) : 0}%`
+                                    }}
+                                ></div>
+                            </div>
+                            <div className="flex justify-between text-sm text-secondary">
+                                <span>{progress.status}</span>
+                                <span>{progress.current} / {progress.total || '?'}</span>
+                            </div>
+
+                            {/* Logs */}
+                            <div className="bg-base-300 p-3 rounded-lg text-xs font-mono h-32 overflow-y-auto">
+                                {logs.map((log, i) => (
+                                    <div key={i} className="text-secondary">{log}</div>
+                                ))}
+                                <div ref={(el) => el?.scrollIntoView({ behavior: 'smooth' })} />
+                            </div>
+                        </div>
+                    ) : (
+                        <button
+                            onClick={handleFetch}
+                            disabled={fetching || accounts.length === 0}
+                            className="btn btn-primary btn-lg w-full"
+                        >
+                            {fetching ? (
+                                <>
+                                    <div className="loading loading-spinner"></div>
+                                    Starting Fetch...
+                                </>
+                            ) : (
+                                <>
+                                    <Download size={20} />
+                                    Fetch Conversations
+                                </>
+                            )}
+                        </button>
+                    )}
                 </div>
 
                 {/* Results Panel */}

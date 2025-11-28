@@ -283,9 +283,129 @@ router.post('/accounts/:id/test', async (req, res) => {
 // Conversation Fetching
 // =========================================
 
+
+
+/**
+ * POST /api/liveperson/fetch-stream
+ * Fetch conversations with real-time progress streaming (NDJSON)
+ */
+router.post('/fetch-stream', async (req, res) => {
+    // Set headers for streaming
+    res.setHeader('Content-Type', 'application/x-ndjson');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+
+    const sendEvent = (type, data) => {
+        res.write(JSON.stringify({ type, ...data }) + '\n');
+    };
+
+    try {
+        const { accountId, dateRange, status, skillIds, batchSize } = req.body;
+
+        if (!accountId || !dateRange || !dateRange.from || !dateRange.to) {
+            sendEvent('error', { message: 'Account ID and date range are required' });
+            return res.end();
+        }
+
+        const account = await getLPAccountById(accountId);
+        if (!account) {
+            sendEvent('error', { message: 'Account not found' });
+            return res.end();
+        }
+
+        if (!account.is_active) {
+            sendEvent('error', { message: 'Account is not active' });
+            return res.end();
+        }
+
+        const credentials = {
+            consumer_key: decrypt(account.consumer_key),
+            consumer_secret: decrypt(account.consumer_secret),
+            token: decrypt(account.token),
+            token_secret: decrypt(account.token_secret),
+            accountId: account.account_id,
+        };
+
+        sendEvent('log', { message: 'Starting fetch...' });
+
+        // Fetch with progress callback
+        const conversations = await fetchConversations({
+            credentials,
+            dateRange: {
+                from: Number(dateRange.from),
+                to: Number(dateRange.to),
+            },
+            status: status || ['CLOSE'],
+            skillIds: skillIds || [],
+            batchSize: batchSize || 20,
+            onProgress: (current, total) => {
+                sendEvent('progress', { current, total });
+            }
+        });
+
+        sendEvent('log', { message: `Processing ${conversations.length} conversations...` });
+
+        // Insert/Update logic
+        let newCount = 0;
+        let updatedCount = 0;
+
+        for (let i = 0; i < conversations.length; i++) {
+            const conv = conversations[i];
+            const conversationId = `LP_${account.account_id}_${conv.external_id}`;
+
+            // Check if conversation exists
+            const existing = await getAll(
+                'SELECT id FROM conversations WHERE conversation_id = ?',
+                [conversationId]
+            );
+
+            if (existing.length > 0) {
+                await runQuery(
+                    `UPDATE conversations 
+           SET transcript_details = ?, 
+               conversation_date = ?, 
+               fetched_at = CURRENT_TIMESTAMP,
+               raw_lp_response = ?,
+               message_count = ?
+           WHERE conversation_id = ?`,
+                    [conv.transcript_details, conv.conversation_date, conv.raw_response, conv.message_count, conversationId]
+                );
+                updatedCount++;
+            } else {
+                await runQuery(
+                    `INSERT INTO conversations 
+           (conversation_id, transcript_details, conversation_date, source, external_id, fetched_at, lp_account_id, raw_lp_response, message_count)
+           VALUES (?, ?, ?, 'liveperson', ?, CURRENT_TIMESTAMP, ?, ?, ?)`,
+                    [conversationId, conv.transcript_details, conv.conversation_date, conv.external_id, account.id, conv.raw_response, conv.message_count]
+                );
+                newCount++;
+            }
+
+            // Send saving progress every 10 items
+            if ((i + 1) % 10 === 0 || i === conversations.length - 1) {
+                sendEvent('saving', { current: i + 1, total: conversations.length });
+            }
+        }
+
+        sendEvent('complete', {
+            success: true,
+            total: conversations.length,
+            new: newCount,
+            updated: updatedCount,
+            message: `Fetched ${conversations.length} conversations (${newCount} new, ${updatedCount} updated)`
+        });
+
+        res.end();
+    } catch (error) {
+        console.error('Error in fetch stream:', error);
+        sendEvent('error', { message: error.message });
+        res.end();
+    }
+});
+
 /**
  * POST /api/liveperson/fetch
- * Fetch conversations from LivePerson
+ * Fetch conversations from LivePerson (Legacy/Simple)
  */
 router.post('/fetch', async (req, res) => {
     try {
@@ -344,12 +464,12 @@ router.post('/fetch', async (req, res) => {
                 // Update existing
                 await runQuery(
                     `UPDATE conversations 
-           SET transcript_details = ?, 
-               conversation_date = ?, 
-               fetched_at = CURRENT_TIMESTAMP,
-               raw_lp_response = ?,
-               message_count = ?
-           WHERE conversation_id = ?`,
+            SET transcript_details = ?, 
+                conversation_date = ?, 
+                fetched_at = CURRENT_TIMESTAMP,
+                raw_lp_response = ?,
+                message_count = ?
+            WHERE conversation_id = ?`,
                     [conv.transcript_details, conv.conversation_date, conv.raw_response, conv.message_count, conversationId]
                 );
                 updatedCount++;
@@ -357,8 +477,8 @@ router.post('/fetch', async (req, res) => {
                 // Insert new
                 await runQuery(
                     `INSERT INTO conversations 
-           (conversation_id, transcript_details, conversation_date, source, external_id, fetched_at, lp_account_id, raw_lp_response, message_count)
-           VALUES (?, ?, ?, 'liveperson', ?, CURRENT_TIMESTAMP, ?, ?, ?)`,
+            (conversation_id, transcript_details, conversation_date, source, external_id, fetched_at, lp_account_id, raw_lp_response, message_count)
+            VALUES (?, ?, ?, 'liveperson', ?, CURRENT_TIMESTAMP, ?, ?, ?)`,
                     [conversationId, conv.transcript_details, conv.conversation_date, conv.external_id, account.id, conv.raw_response, conv.message_count]
                 );
                 newCount++;
