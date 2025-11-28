@@ -1,13 +1,49 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Map, Grid, Filter } from 'lucide-react';
-import TopicClusterMap from './visualizations/TopicClusterMap';
-import SentimentHeatmap from './visualizations/SentimentHeatmap';
+import { Filter, RefreshCw } from 'lucide-react';
+import api from '../utils/api';
+import IntentClusterMap from './visualizations/IntentClusterMap';
+import EmpathyDistribution from './visualizations/EmpathyDistribution';
+import ChurnRiskVisuals from './visualizations/ChurnRiskVisuals';
+import ResolutionChart from './visualizations/ResolutionChart';
 
 export default function InteractiveExplorer() {
-    const [activeView, setActiveView] = useState('topics'); // 'topics' or 'heatmap'
+    const [data, setData] = useState([]);
+    const [loading, setLoading] = useState(true);
     const [dateRange, setDateRange] = useState('all');
-    const [sentimentFilter, setSentimentFilter] = useState('all');
+    const [error, setError] = useState(null);
+
+    const fetchData = async () => {
+        setLoading(true);
+        setError(null);
+        try {
+            // Fetch AI results (limit 500 for visualization)
+            // Note: We might want to add date filtering to the API call in the future
+            const response = await api.getAIResults(1, 500);
+            setData(response.results || []);
+        } catch (err) {
+            console.error("Failed to load explorer data", err);
+            setError("Failed to load analysis data. Please try again.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchData();
+    }, []);
+
+    // Filter data locally for now based on dateRange
+    // In a real app, this should be done on the backend
+    const filteredData = data.filter(d => {
+        if (dateRange === 'all') return true;
+        const date = new Date(d.analyzed_at);
+        const now = new Date();
+        const diffTime = Math.abs(now - date);
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        const rangeDays = parseInt(dateRange.replace('d', ''));
+        return diffDays <= rangeDays;
+    });
 
     return (
         <div className="container" style={{ padding: '2rem 0', minHeight: 'calc(100vh - 64px)' }}>
@@ -18,39 +54,18 @@ export default function InteractiveExplorer() {
                         Interactive Explorer
                     </h1>
                     <p style={{ color: 'var(--text-secondary)', marginTop: '0.5rem' }}>
-                        Visually discover trends and patterns in your conversation data.
+                        Deep dive into AI-powered insights across your conversations.
                     </p>
                 </div>
 
-                {/* View Toggles */}
-                <div className="flex bg-tertiary p-1 rounded-lg border border-border">
+                <div className="flex gap-sm">
                     <button
-                        onClick={() => setActiveView('topics')}
-                        className={`flex items-center gap-xs px-md py-sm rounded-md transition-all ${activeView === 'topics'
-                                ? 'bg-primary text-white shadow-sm'
-                                : 'text-secondary hover:text-primary'
-                            }`}
-                        style={{
-                            background: activeView === 'topics' ? 'var(--accent-primary)' : 'transparent',
-                            color: activeView === 'topics' ? 'white' : 'var(--text-secondary)'
-                        }}
+                        onClick={fetchData}
+                        className="btn btn-secondary"
+                        disabled={loading}
                     >
-                        <Map size={18} />
-                        Topic Map
-                    </button>
-                    <button
-                        onClick={() => setActiveView('heatmap')}
-                        className={`flex items-center gap-xs px-md py-sm rounded-md transition-all ${activeView === 'heatmap'
-                                ? 'bg-primary text-white shadow-sm'
-                                : 'text-secondary hover:text-primary'
-                            }`}
-                        style={{
-                            background: activeView === 'heatmap' ? 'var(--accent-primary)' : 'transparent',
-                            color: activeView === 'heatmap' ? 'white' : 'var(--text-secondary)'
-                        }}
-                    >
-                        <Grid size={18} />
-                        Sentiment Heatmap
+                        <RefreshCw size={18} className={loading ? "animate-spin" : ""} />
+                        Refresh Data
                     </button>
                 </div>
             </div>
@@ -73,46 +88,91 @@ export default function InteractiveExplorer() {
                     <option value="30d">Last 30 Days</option>
                     <option value="90d">Last 3 Months</option>
                 </select>
-
-                <select
-                    className="input py-xs"
-                    value={sentimentFilter}
-                    onChange={(e) => setSentimentFilter(e.target.value)}
-                    style={{ maxWidth: '200px' }}
-                >
-                    <option value="all">All Sentiments</option>
-                    <option value="positive">Positive Only</option>
-                    <option value="negative">Negative Only</option>
-                    <option value="neutral">Neutral Only</option>
-                </select>
             </div>
 
-            {/* Main Visualization Area */}
-            <div className="relative" style={{ minHeight: '600px' }}>
-                <AnimatePresence mode="wait">
-                    {activeView === 'topics' ? (
-                        <motion.div
-                            key="topics"
-                            initial={{ opacity: 0, x: -20 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            exit={{ opacity: 0, x: 20 }}
-                            transition={{ duration: 0.3 }}
-                        >
-                            <TopicClusterMap dateRange={dateRange} sentimentFilter={sentimentFilter} />
-                        </motion.div>
-                    ) : (
-                        <motion.div
-                            key="heatmap"
-                            initial={{ opacity: 0, x: 20 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            exit={{ opacity: 0, x: -20 }}
-                            transition={{ duration: 0.3 }}
-                        >
-                            <SentimentHeatmap dateRange={dateRange} sentimentFilter={sentimentFilter} />
-                        </motion.div>
-                    )}
-                </AnimatePresence>
-            </div>
+            {loading ? (
+                <div className="flex justify-center p-xl">
+                    <div className="spinner"></div>
+                </div>
+            ) : error ? (
+                <div className="card p-xl text-center border-red-500 bg-red-500/10 text-red-500">
+                    <p>{error}</p>
+                    <button onClick={fetchData} className="btn btn-secondary mt-md">Retry</button>
+                </div>
+            ) : filteredData.length === 0 ? (
+                <div className="card p-xl text-center">
+                    <p className="text-lg text-secondary">No AI analysis data found.</p>
+                    <p className="text-sm text-muted mt-sm">Run AI analysis on your conversations to see insights here.</p>
+                </div>
+            ) : (
+                <div className="grid grid-2 gap-lg">
+                    {/* Top Row: Intent Map & Empathy */}
+                    <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.3 }}
+                        className="card"
+                        style={{ height: '400px' }}
+                    >
+                        <div className="p-md border-b border-border mb-md">
+                            <h3 className="text-lg font-semibold">Intent Clusters</h3>
+                            <p className="text-sm text-secondary">Grouping conversations by primary intent and sentiment</p>
+                        </div>
+                        <div style={{ height: '300px', width: '100%' }}>
+                            <IntentClusterMap data={filteredData} />
+                        </div>
+                    </motion.div>
+
+                    <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.3, delay: 0.1 }}
+                        className="card"
+                        style={{ height: '400px' }}
+                    >
+                        <div className="p-md border-b border-border mb-md">
+                            <h3 className="text-lg font-semibold">Empathy Distribution</h3>
+                            <p className="text-sm text-secondary">Distribution of agent empathy scores across conversations</p>
+                        </div>
+                        <div style={{ height: '300px', width: '100%' }}>
+                            <EmpathyDistribution data={filteredData} />
+                        </div>
+                    </motion.div>
+
+                    {/* Bottom Row: Churn Risk & Resolutions */}
+                    <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.3, delay: 0.2 }}
+                        className="card"
+                        style={{ height: '400px' }}
+                    >
+                        <div className="p-md border-b border-border mb-md">
+                            <h3 className="text-lg font-semibold">Churn Risk Analysis</h3>
+                            <p className="text-sm text-secondary">Overview of customer churn risk levels</p>
+                        </div>
+                        <div style={{ height: '300px', width: '100%' }}>
+                            <ChurnRiskVisuals data={filteredData} />
+                        </div>
+                    </motion.div>
+
+                    <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.3, delay: 0.3 }}
+                        className="card"
+                        style={{ height: '400px' }}
+                    >
+                        <div className="p-md border-b border-border mb-md">
+                            <h3 className="text-lg font-semibold">Resolution Status</h3>
+                            <p className="text-sm text-secondary">Proportion of resolved vs. unresolved issues</p>
+                        </div>
+                        <div style={{ height: '300px', width: '100%' }}>
+                            <ResolutionChart data={filteredData} />
+                        </div>
+                    </motion.div>
+                </div>
+            )}
         </div>
     );
 }

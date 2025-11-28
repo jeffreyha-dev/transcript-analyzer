@@ -16,7 +16,7 @@ export default function TopicClusterMap({ dateRange, sentimentFilter }) {
                     // Parse topics JSON if string
                     let topics = [];
                     try {
-                        topics = typeof r.topics === 'string' ? JSON.parse(r.topics) : r.topics;
+                        topics = typeof r.topics === 'string' ? JSON.parse(r.topics) : (r.topics || []);
                     } catch (e) {
                         topics = [];
                     }

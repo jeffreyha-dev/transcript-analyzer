@@ -644,3 +644,15 @@ tr.selected-row {
 .mb-lg {
   margin-bottom: var(--spacing-lg);
 }
+
+.h-full {
+  height: 100%;
+}
+
+.w-full {
+  width: 100%;
+}
+
+.grid-cols-1 {
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+}
