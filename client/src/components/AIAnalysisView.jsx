@@ -582,6 +582,7 @@ export default function AIAnalysisView() {
                                             <th>Complexity</th>
                                             <th>Empathy</th>
                                             <th>Churn Risk</th>
+                                            <th>Provider</th>
                                             <th>Resolved</th>
                                             <th>Actions</th>
                                         </tr>
@@ -620,6 +621,15 @@ export default function AIAnalysisView() {
                                                 </td>
                                                 <td style={{ color: getScoreColor(100 - result.churn_risk_score), fontWeight: '600' }}>
                                                     {result.churn_risk_score}
+                                                </td>
+                                                <td>
+                                                    <span className="badge badge-neutral" style={{
+                                                        fontSize: '0.75rem',
+                                                        textTransform: 'capitalize',
+                                                        fontFamily: 'monospace'
+                                                    }}>
+                                                        {result.provider_used || 'N/A'}
+                                                    </span>
                                                 </td>
                                                 <td>
                                                     <span className={`badge ${result.resolved ? 'badge-success' : 'badge-warning'}`}>

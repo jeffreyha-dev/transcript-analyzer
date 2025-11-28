@@ -103,7 +103,7 @@ export default function ExportView() {
                             <li>Average message length and response times</li>
                             <li>Agent performance scores</li>
                             <li>Customer satisfaction scores</li>
-                            <li>Top topics and keywords</li>
+                            <li>Keywords</li>
                         </ul>
 
                         <p style={{ marginTop: '1rem' }}><strong>Format Comparison:</strong></p>

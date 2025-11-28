@@ -44,7 +44,7 @@ export default function Dashboard() {
         );
     }
 
-    const { overview, sentimentDistribution, topTopics, recentConversations } = data || {};
+    const { overview, sentimentDistribution, recentConversations } = data || {};
 
     return (
         <div className="container" style={{ paddingTop: '2rem', paddingBottom: '2rem' }}>
@@ -87,64 +87,35 @@ export default function Dashboard() {
                 </div>
             </div>
 
-            <div className="grid grid-2 gap-md mb-lg">
-                {/* Sentiment Distribution */}
-                <div className="card">
-                    <h3 className="card-title">Sentiment Distribution</h3>
-                    <div className="mt-md">
-                        {sentimentDistribution && sentimentDistribution.length > 0 ? (
-                            sentimentDistribution.map((item) => (
-                                <div key={item.sentiment_label} className="mb-md">
-                                    <div className="flex justify-between items-center mb-sm">
-                                        <span className={`badge badge-${getSentimentBadgeType(item.sentiment_label)}`}>
-                                            {item.sentiment_label}
-                                        </span>
-                                        <span style={{ fontWeight: 600 }}>{item.count}</span>
-                                    </div>
-                                    <div className="progress-bar">
-                                        <div
-                                            className="progress-fill"
-                                            style={{
-                                                width: `${(item.count / overview?.totalAnalyzed) * 100}%`,
-                                                background: getSentimentColor(item.sentiment_label)
-                                            }}
-                                        ></div>
-                                    </div>
+            {/* Sentiment Distribution */}
+            <div className="card mb-lg">
+                <h3 className="card-title">Sentiment Distribution</h3>
+                <div className="mt-md">
+                    {sentimentDistribution && sentimentDistribution.length > 0 ? (
+                        sentimentDistribution.map((item) => (
+                            <div key={item.sentiment_label} className="mb-md">
+                                <div className="flex justify-between items-center mb-sm">
+                                    <span className={`badge badge-${getSentimentBadgeType(item.sentiment_label)}`}>
+                                        {item.sentiment_label}
+                                    </span>
+                                    <span style={{ fontWeight: 600 }}>{item.count}</span>
                                 </div>
-                            ))
-                        ) : (
-                            <p style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: '2rem' }}>
-                                No sentiment data available
-                            </p>
-                        )}
-                    </div>
-                </div>
-
-                {/* Top Topics */}
-                <div className="card">
-                    <h3 className="card-title">Top Topics</h3>
-                    <div className="mt-md">
-                        {topTopics && topTopics.length > 0 ? (
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-                                {topTopics.map((topic, index) => (
+                                <div className="progress-bar">
                                     <div
-                                        key={index}
-                                        className="badge badge-primary"
+                                        className="progress-fill"
                                         style={{
-                                            fontSize: `${Math.max(0.75, Math.min(1.25, topic.count / 10))}rem`,
-                                            padding: '0.5rem 1rem'
+                                            width: `${(item.count / overview?.totalAnalyzed) * 100}%`,
+                                            background: getSentimentColor(item.sentiment_label)
                                         }}
-                                    >
-                                        {topic.term} ({topic.count})
-                                    </div>
-                                ))}
+                                    ></div>
+                                </div>
                             </div>
-                        ) : (
-                            <p style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: '2rem' }}>
-                                No topics available
-                            </p>
-                        )}
-                    </div>
+                        ))
+                    ) : (
+                        <p style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: '2rem' }}>
+                            No sentiment data available
+                        </p>
+                    )}
                 </div>
             </div>
 

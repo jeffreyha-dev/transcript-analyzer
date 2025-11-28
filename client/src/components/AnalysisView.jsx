@@ -267,7 +267,6 @@ export default function AnalysisView() {
                                         <th>Agent Score</th>
                                         <th>Customer Score</th>
                                         <th>Avg Msg Length</th>
-                                        <th>Top Topics</th>
                                     </tr>
                                 </thead>
                                 <tbody>

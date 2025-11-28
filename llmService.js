@@ -129,51 +129,97 @@ class LLMService {
         let cost = 0;
 
         try {
-            // Try primary provider (Ollama)
-            if (this.config.primaryProvider === 'ollama' && this.ollama) {
+            // Helper function to check if a provider is available
+            const isProviderAvailable = (providerName) => {
+                if (providerName === 'ollama') return !!this.ollama;
+                if (providerName === 'openai') return !!this.openai && this.config.openaiApiKey && !this.config.openaiApiKey.includes('your-');
+                if (providerName === 'gemini') return !!this.gemini && this.config.geminiApiKey && !this.config.geminiApiKey.includes('your-');
+                return false;
+            };
+
+            // Helper function to try a specific provider
+            const tryProvider = async (providerName) => {
+                if (providerName === 'ollama' && isProviderAvailable('ollama')) {
+                    const content = await this.analyzeWithOllama(prompt, options);
+                    return {
+                        content,
+                        provider: 'ollama',
+                        tokensUsed: this.estimateTokens(prompt + content),
+                        cost: 0
+                    };
+                } else if (providerName === 'openai' && isProviderAvailable('openai')) {
+                    // Check budget before using paid API
+                    if (this.currentMonthCost >= this.config.monthlyBudget) {
+                        throw new Error(`Monthly budget of $${this.config.monthlyBudget} exceeded`);
+                    }
+                    const response = await this.analyzeWithOpenAI(prompt, options);
+                    return {
+                        content: response.content,
+                        provider: 'openai',
+                        tokensUsed: response.tokensUsed,
+                        cost: response.cost
+                    };
+                } else if (providerName === 'gemini' && isProviderAvailable('gemini')) {
+                    // Check budget before using paid API
+                    if (this.currentMonthCost >= this.config.monthlyBudget) {
+                        throw new Error(`Monthly budget of $${this.config.monthlyBudget} exceeded`);
+                    }
+                    const response = await this.analyzeWithGemini(prompt, options);
+                    return {
+                        content: response.content,
+                        provider: 'gemini',
+                        tokensUsed: response.tokensUsed,
+                        cost: response.cost
+                    };
+                }
+                throw new Error(`Provider ${providerName} is not available or not configured`);
+            };
+
+            // Try primary provider first
+            const primaryProvider = this.config.primaryProvider;
+            if (isProviderAvailable(primaryProvider)) {
                 try {
-                    result = await this.analyzeWithOllama(prompt, options);
-                    provider = 'ollama';
-                    tokensUsed = this.estimateTokens(prompt + result);
-                    cost = 0; // Ollama is free
+                    const response = await tryProvider(primaryProvider);
+                    result = response.content;
+                    provider = response.provider;
+                    tokensUsed = response.tokensUsed;
+                    cost = response.cost;
                 } catch (error) {
-                    console.warn('Ollama failed, trying fallback:', error.message);
-                    if (!this.config.fallbackEnabled) throw error;
+                    console.warn(`${primaryProvider} failed:`, error.message);
+                    if (!this.config.fallbackEnabled) {
+                        throw error;
+                    }
+                }
+            } else {
+                console.warn(`Primary provider ${primaryProvider} is not available or not configured`);
+                if (!this.config.fallbackEnabled) {
+                    throw new Error(`Primary provider ${primaryProvider} is not available. Please configure the API key or enable fallback.`);
                 }
             }
 
-            // Fallback to cloud providers
+            // Try fallback providers if primary failed and fallback is enabled
             if (!result && this.config.fallbackEnabled) {
-                // Check budget before using paid APIs
-                if (this.currentMonthCost >= this.config.monthlyBudget) {
-                    throw new Error(`Monthly budget of $${this.config.monthlyBudget} exceeded`);
-                }
+                const fallbackOrder = ['ollama', 'gemini', 'openai'].filter(p => p !== primaryProvider);
 
-                // Try OpenAI first (cheaper)
-                if (this.openai) {
-                    try {
-                        const response = await this.analyzeWithOpenAI(prompt, options);
-                        result = response.content;
-                        provider = 'openai';
-                        tokensUsed = response.tokensUsed;
-                        cost = response.cost;
-                    } catch (error) {
-                        console.warn('OpenAI failed, trying Gemini:', error.message);
+                for (const fallbackProvider of fallbackOrder) {
+                    if (!result && isProviderAvailable(fallbackProvider)) {
+                        try {
+                            const response = await tryProvider(fallbackProvider);
+                            result = response.content;
+                            provider = response.provider;
+                            tokensUsed = response.tokensUsed;
+                            cost = response.cost;
+                            console.log(`✓ Fallback to ${fallbackProvider} successful`);
+                            break;
+                        } catch (error) {
+                            console.warn(`${fallbackProvider} fallback failed:`, error.message);
+                        }
                     }
-                }
-
-                // Try Gemini as last resort
-                if (!result && this.gemini) {
-                    const response = await this.analyzeWithGemini(prompt, options);
-                    result = response.content;
-                    provider = 'gemini';
-                    tokensUsed = response.tokensUsed;
-                    cost = response.cost;
                 }
             }
 
             if (!result) {
-                throw new Error('All LLM providers failed');
+                throw new Error('All available LLM providers failed. Please check your API keys and provider configuration.');
             }
 
             const processingTime = Date.now() - startTime;
