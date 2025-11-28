@@ -488,15 +488,25 @@ async function getTopicClusters(dateRange = 'all', sentimentFilter = 'all') {
 // =========================================
 
 async function createLPAccount(accountData) {
-  const { account_name, consumer_key, consumer_secret, token, token_secret, account_id } = accountData;
+  const { account_name, consumer_key, consumer_secret, token, token_secret, account_id, service_name, api_version, api_endpoint_path } = accountData;
 
   const sql = `
     INSERT INTO liveperson_accounts 
-    (account_name, consumer_key, consumer_secret, token, token_secret, account_id)
-    VALUES (?, ?, ?, ?, ?, ?)
+    (account_name, consumer_key, consumer_secret, token, token_secret, account_id, service_name, api_version, api_endpoint_path)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
 
-  return runQuery(sql, [account_name, consumer_key, consumer_secret, token, token_secret, account_id]);
+  return runQuery(sql, [
+    account_name,
+    consumer_key,
+    consumer_secret,
+    token,
+    token_secret,
+    account_id,
+    service_name || 'msgHist',
+    api_version || '1.0',
+    api_endpoint_path || '/messaging_history/api/account/{accountId}/conversations/search'
+  ]);
 }
 
 async function getAllLPAccounts() {
@@ -512,7 +522,7 @@ async function getLPAccountById(id) {
 }
 
 async function updateLPAccount(id, accountData) {
-  const { account_name, consumer_key, consumer_secret, token, token_secret, account_id, is_active } = accountData;
+  const { account_name, consumer_key, consumer_secret, token, token_secret, account_id, is_active, service_name, api_version, api_endpoint_path } = accountData;
 
   const sql = `
     UPDATE liveperson_accounts 
@@ -521,13 +531,28 @@ async function updateLPAccount(id, accountData) {
         consumer_secret = ?, 
         token = ?, 
         token_secret = ?, 
-        account_id = ?,
+        account_id = ?, 
         is_active = ?,
+        service_name = ?,
+        api_version = ?,
+        api_endpoint_path = ?,
         updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
   `;
 
-  return runQuery(sql, [account_name, consumer_key, consumer_secret, token, token_secret, account_id, is_active, id]);
+  return runQuery(sql, [
+    account_name,
+    consumer_key,
+    consumer_secret,
+    token,
+    token_secret,
+    account_id,
+    is_active,
+    service_name || 'msgHist',
+    api_version || '1.0',
+    api_endpoint_path || '/messaging_history/api/account/{accountId}/conversations/search',
+    id
+  ]);
 }
 
 async function deleteLPAccount(id) {

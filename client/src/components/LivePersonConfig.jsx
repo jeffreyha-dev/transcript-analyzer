@@ -66,6 +66,9 @@ export default function LivePersonConfig({ onClose, onAccountCreated }) {
             token_secret: account.token_secret,
             account_id: account.account_id,
             is_active: account.is_active,
+            service_name: account.service_name,
+            api_version: account.api_version,
+            api_endpoint_path: account.api_endpoint_path,
         });
         setShowForm(true);
     };
@@ -112,6 +115,9 @@ export default function LivePersonConfig({ onClose, onAccountCreated }) {
             token_secret: '',
             account_id: '',
             is_active: true,
+            service_name: '',
+            api_version: '',
+            api_endpoint_path: '',
         });
         setEditingId(null);
         setShowForm(false);
@@ -280,6 +286,57 @@ export default function LivePersonConfig({ onClose, onAccountCreated }) {
                                             >
                                                 {showSecrets.token_secret ? <EyeOff size={16} /> : <Eye size={16} />}
                                             </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Advanced Settings */}
+                                <div className="collapse collapse-arrow bg-base-100 mt-4 border border-base-300">
+                                    <input type="checkbox" />
+                                    <div className="collapse-title text-md font-medium">
+                                        Advanced Settings
+                                    </div>
+                                    <div className="collapse-content">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                                            <div className="form-control">
+                                                <label className="label">
+                                                    <span className="label-text">Service Name</span>
+                                                    <span className="label-text-alt text-secondary">Default: msgHist</span>
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    className="input input-bordered input-sm"
+                                                    value={formData.service_name || ''}
+                                                    onChange={(e) => setFormData({ ...formData, service_name: e.target.value })}
+                                                    placeholder="msgHist"
+                                                />
+                                            </div>
+                                            <div className="form-control">
+                                                <label className="label">
+                                                    <span className="label-text">API Version</span>
+                                                    <span className="label-text-alt text-secondary">Default: 1.0</span>
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    className="input input-bordered input-sm"
+                                                    value={formData.api_version || ''}
+                                                    onChange={(e) => setFormData({ ...formData, api_version: e.target.value })}
+                                                    placeholder="1.0"
+                                                />
+                                            </div>
+                                            <div className="form-control md:col-span-2">
+                                                <label className="label">
+                                                    <span className="label-text">API Endpoint Path</span>
+                                                    <span className="label-text-alt text-secondary">Use {'{accountId}'} placeholder</span>
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    className="input input-bordered input-sm font-mono text-xs"
+                                                    value={formData.api_endpoint_path || ''}
+                                                    onChange={(e) => setFormData({ ...formData, api_endpoint_path: e.target.value })}
+                                                    placeholder="/messaging_history/api/account/{accountId}/conversations/search"
+                                                />
+                                            </div>
                                         </div>
                                     </div>
                                 </div>

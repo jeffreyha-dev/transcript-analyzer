@@ -78,6 +78,9 @@ router.get('/accounts', async (req, res) => {
             token: maskSecret(account.token),
             token_secret: maskSecret(account.token_secret),
             is_active: account.is_active,
+            service_name: account.service_name || 'msgHist',
+            api_version: account.api_version || '1.0',
+            api_endpoint_path: account.api_endpoint_path || '/messaging_history/api/account/{accountId}/conversations/search',
             created_at: account.created_at,
             updated_at: account.updated_at,
         }));
@@ -132,6 +135,9 @@ router.get('/accounts/:id', async (req, res) => {
             token: maskSecret(account.token),
             token_secret: maskSecret(account.token_secret),
             is_active: account.is_active,
+            service_name: account.service_name || 'msgHist',
+            api_version: account.api_version || '1.0',
+            api_endpoint_path: account.api_endpoint_path || '/messaging_history/api/account/{accountId}/conversations/search',
             created_at: account.created_at,
             updated_at: account.updated_at,
         });
@@ -162,6 +168,9 @@ router.post('/accounts', async (req, res) => {
             token: encrypt(token),
             token_secret: encrypt(token_secret),
             account_id,
+            service_name: req.body.service_name,
+            api_version: req.body.api_version,
+            api_endpoint_path: req.body.api_endpoint_path,
         };
 
         await createLPAccount(encryptedData);
@@ -206,6 +215,9 @@ router.put('/accounts/:id', async (req, res) => {
             token_secret: token_secret && !token_secret.includes('****') ? encrypt(token_secret) : existing.token_secret,
             account_id,
             is_active: is_active !== undefined ? is_active : existing.is_active,
+            service_name: req.body.service_name !== undefined ? req.body.service_name : existing.service_name,
+            api_version: req.body.api_version !== undefined ? req.body.api_version : existing.api_version,
+            api_endpoint_path: req.body.api_endpoint_path !== undefined ? req.body.api_endpoint_path : existing.api_endpoint_path,
         };
 
         await updateLPAccount(req.params.id, updatedData);
@@ -331,6 +343,9 @@ router.post('/fetch-stream', async (req, res) => {
         // Fetch with progress callback
         const conversations = await fetchConversations({
             credentials,
+            serviceName: account.service_name,
+            apiVersion: account.api_version,
+            apiEndpointPath: account.api_endpoint_path,
             dateRange: {
                 from: Number(dateRange.from),
                 to: Number(dateRange.to),
@@ -438,6 +453,9 @@ router.post('/fetch', async (req, res) => {
         // Fetch conversations
         const conversations = await fetchConversations({
             credentials,
+            serviceName: account.service_name,
+            apiVersion: account.api_version,
+            apiEndpointPath: account.api_endpoint_path,
             dateRange: {
                 from: Number(dateRange.from),
                 to: Number(dateRange.to),

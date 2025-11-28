@@ -11,10 +11,11 @@ import { generateOAuthHeader } from './oauthService.js';
  * @param {string} accountId - LivePerson account ID
  * @param {string} serviceName - Service name (e.g., 'msgHist')
  * @param {object} credentials - OAuth credentials
+ * @param {string} apiVersion - API version (default: '1.0')
  * @returns {Promise<string>} Service domain
  */
-export async function discoverServiceDomain(accountId, serviceName, credentials) {
-    const url = `https://api.liveperson.net/api/account/${accountId}/service/${serviceName}/baseURI.json?version=1.0`;
+export async function discoverServiceDomain(accountId, serviceName, credentials, apiVersion = '1.0') {
+    const url = `https://api.liveperson.net/api/account/${accountId}/service/${serviceName}/baseURI.json?version=${apiVersion}`;
 
     const authHeader = generateOAuthHeader(url, 'GET', credentials);
 
@@ -77,6 +78,9 @@ export function buildTranscript(messageRecords) {
  * Fetch conversations from LivePerson
  * @param {object} params - Fetch parameters
  * @param {object} params.credentials - OAuth credentials
+ * @param {string} params.serviceName - Service name (default: 'msgHist')
+ * @param {string} params.apiVersion - API version (default: '1.0')
+ * @param {string} params.apiEndpointPath - API endpoint path (default: '/messaging_history/api/account/{accountId}/conversations/search')
  * @param {object} params.dateRange - { from: timestamp, to: timestamp }
  * @param {Array<string>} params.status - Conversation statuses (e.g., ['CLOSE'])
  * @param {Array<number>} params.skillIds - Optional skill IDs filter
@@ -87,6 +91,9 @@ export function buildTranscript(messageRecords) {
 export async function fetchConversations(params) {
     const {
         credentials,
+        serviceName = 'msgHist',
+        apiVersion = '1.0',
+        apiEndpointPath = '/messaging_history/api/account/{accountId}/conversations/search',
         dateRange,
         status = ['CLOSE'],
         skillIds = [],
@@ -96,9 +103,12 @@ export async function fetchConversations(params) {
 
     const { accountId } = credentials;
 
-    // Discover msgHist domain
-    const domain = await discoverServiceDomain(accountId, 'msgHist', credentials);
-    const baseUrl = `https://${domain}/messaging_history/api/account/${accountId}/conversations/search`;
+    // Discover service domain
+    const domain = await discoverServiceDomain(accountId, serviceName, credentials, apiVersion);
+
+    // Construct URL using configured path
+    const path = apiEndpointPath.replace('{accountId}', accountId);
+    const baseUrl = `https://${domain}${path}`;
 
     const conversations = [];
     let offset = 0;
