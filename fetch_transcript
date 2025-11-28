@@ -1,0 +1,1401 @@
+// Code.gs — Raw Transcript Only + Deterministic Analysis (no normalization)
+/**
+ * Complete Apps Script for:
+ * 1) Dynamically retrieving LivePerson domain for msgHist
+ * 2) Generating conversation transcripts (UI-driven time range, status & skill filters)
+ * 3) Analyzing transcripts via Ollama (strict JSON, retries, batching)
+ * 4) Analytics via a single METRIC_DEFINITIONS source
+ * 5) Raw transcript only (no normalization/merging/sanitization)
+ * 6) Progress sidebar with ETA (fetch + analyze), resilient across trigger resumes
+ * 7) "Analyze from Row…" + "Analyze from Selection"
+ */
+
+// =========================================
+//  🔐 Credentials (fallbacks for local dev)
+//  Prefer setting Script Properties:
+//   CONSUMER_KEY, CONSUMER_SECRET, TOKEN, TOKEN_SECRET, ACCOUNT_ID, CLOUDFLARED_URL
+// =========================================
+const consumer_key_fallback = "a50e6632ae7f4d21b7bfb4c0e5644cbe";
+const consumer_secret_fallback = "42992e09278678b4"; // 🔐
+const token_fallback = "c7cb7560de834293a89827e62453d50b";
+const token_secret_fallback = "7392ecd7dcf6008c"; // 🔐
+const accountId_fallback = "12966207";
+const cloudflared_fallback = "https://mileage-irish-translations-andrea.trycloudflare.com"; // ← your endpoint
+const llm_model = "mistral"; //LLM
+
+function getProp_(key, fallback) {
+    const v = PropertiesService.getScriptProperties().getProperty(key);
+    return v != null && v !== '' ? v : fallback;
+}
+
+function _extractJsonObjectString_(s) {
+    if (s == null) throw new Error('Empty model output');
+    let t = String(s)
+        .replace(/```json|```/gi, '')
+        .replace(/[“”]/g, '"')
+        .replace(/[‘’]/g, "'")
+        .trim();
+    const start = t.indexOf('{');
+    const end = t.lastIndexOf('}');
+    if (start === -1 || end === -1 || end <= start) throw new Error('No JSON object found in model output');
+    t = t.slice(start, end + 1).replace(/,\s*([}\]])/g, '$1');
+    return t;
+}
+
+// =========================================
+// Debug controls
+// =========================================
+// Toggle by:
+// 1) Script Property "DEBUG" = "true" | "false", or
+// 2) the menu item "Toggle Debug Logging" below.
+const DEBUG_SHEET_NAME = 'DebugLog';
+
+function _dbgEnabled_() {
+    // Script property wins; default = false
+    const v = PropertiesService.getScriptProperties().getProperty('DEBUG');
+    return String(v || 'false').toLowerCase() === 'true';
+}
+
+// Keep debug records small but useful
+const _DBG_LIMITS_ = {
+    promptMax: 5000,     // chars to keep from prompt
+    bodyMax: 4000,       // chars to keep from raw envelope
+    jsonMax: 4000        // chars to keep from parsed JSON
+};
+
+function _ensureDebugSheet_() {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    let s = ss.getSheetByName(DEBUG_SHEET_NAME);
+    if (!s) {
+        s = ss.insertSheet(DEBUG_SHEET_NAME);
+        s.appendRow(['ts_sgt', 'row', 'phase', 'note', 'len', 'snippet']);
+    }
+    return s;
+}
+
+function _dbgTrunc_(s, maxLen) {
+    if (s == null) return '';
+    const t = String(s);
+    if (t.length <= maxLen) return t;
+    return t.slice(0, maxLen) + ` …[+${t.length - maxLen} more chars]`;
+}
+
+function _dbgLog_(rowIndex /* 2-based sheet row or '-' */, phase, blob, note) {
+    if (!_dbgEnabled_()) return;
+    try {
+        const s = _ensureDebugSheet_();
+        const now = Utilities.formatDate(new Date(), 'Asia/Singapore', 'yyyy-MM-dd HH:mm:ss');
+        const str = typeof blob === 'string' ? blob : (blob == null ? '' : JSON.stringify(blob));
+        s.appendRow([now, rowIndex, phase, note || '', str.length, _dbgTrunc_(str, 1200)]);
+    } catch (e) {
+        // last resort
+        try { Logger.log('DEBUG LOG FAILED: ' + e.message); } catch (_) { }
+    }
+}
+
+function toggleDebugLogging() {
+    const props = PropertiesService.getScriptProperties();
+    const cur = _dbgEnabled_();
+    props.setProperty('DEBUG', String(!cur));
+    const msg = !cur ? '✅ Debug logging ENABLED' : '🟡 Debug logging DISABLED';
+    if (_isUiAvailable_()) SpreadsheetApp.getUi().alert(msg);
+}
+
+function clearDebugLog() {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const s = ss.getSheetByName(DEBUG_SHEET_NAME);
+    if (!s) { if (_isUiAvailable_()) SpreadsheetApp.getUi().alert('No DebugLog sheet yet.'); return; }
+    s.clear(); s.appendRow(['ts_sgt', 'row', 'phase', 'note', 'len', 'snippet']);
+    if (_isUiAvailable_()) SpreadsheetApp.getUi().alert('🧹 DebugLog cleared.');
+}
+
+function cfg_() {
+    return {
+        consumer_key: getProp_("CONSUMER_KEY", consumer_key_fallback),
+        consumer_secret: getProp_("CONSUMER_SECRET", consumer_secret_fallback),
+        token: getProp_("TOKEN", token_fallback),
+        token_secret: getProp_("TOKEN_SECRET", token_secret_fallback),
+        accountId: getProp_("ACCOUNT_ID", accountId_fallback),
+        cloudflared: getProp_("CLOUDFLARED_URL", cloudflared_fallback)
+    };
+}
+
+// =====================
+// Progress Store + ETA
+// =====================
+function _nowMs_() { return Date.now(); }
+
+function _newProgress_(title, total /* may be null if unknown yet */) {
+    const id = Utilities.getUuid();
+    const p = {
+        id, title,
+        total: total == null ? null : Number(total),
+        done: 0,
+        startedAt: _nowMs_(),
+        lastTickAt: _nowMs_(),
+        // EMA smoothing for ms/unit
+        emaMsPerUnit: null,
+        stage: "Starting…",
+        finished: false,
+        error: null
+    };
+    PropertiesService.getScriptProperties().setProperty(`progress:${id}`, JSON.stringify(p));
+    return id;
+}
+
+function _getProgress_(id) {
+    const raw = PropertiesService.getScriptProperties().getProperty(`progress:${id}`);
+    return raw ? JSON.parse(raw) : null;
+}
+
+function _saveProgress_(p) {
+    PropertiesService.getScriptProperties().setProperty(`progress:${p.id}`, JSON.stringify(p));
+}
+
+function _setProgressTotal_(id, total) {
+    const p = _getProgress_(id); if (!p) return;
+    p.total = Number(total);
+    _saveProgress_(p);
+}
+
+function _tickProgress_(id, incDone /* e.g., +1 row or +N items */, unitsMs /* how long this tick took */) {
+    const p = _getProgress_(id); if (!p) return;
+    p.done += Number(incDone || 0);
+    p.lastTickAt = _nowMs_();
+
+    // Exponential moving average for ms/unit
+    if (unitsMs != null && incDone > 0) {
+        const msPerUnit = unitsMs / incDone;
+        const alpha = 0.25; // smoothing factor
+        p.emaMsPerUnit = (p.emaMsPerUnit == null) ? msPerUnit : (alpha * msPerUnit + (1 - alpha) * p.emaMsPerUnit);
+    }
+
+    _saveProgress_(p);
+}
+
+function _setProgressStage_(id, stageText) {
+    const p = _getProgress_(id); if (!p) return;
+    p.stage = stageText;
+    _saveProgress_(p);
+}
+
+function _finishProgress_(id) {
+    const p = _getProgress_(id); if (!p) return;
+    p.finished = true;
+    _saveProgress_(p);
+}
+
+function _failProgress_(id, message) {
+    const p = _getProgress_(id); if (!p) return;
+    p.error = String(message || 'Unknown error');
+    p.finished = true;
+    _saveProgress_(p);
+}
+
+// RPC for the sidebar to poll
+function getProgress(id) {
+    const p = _getProgress_(id);
+    if (!p) return { error: "not_found" };
+
+    // Compute ETA & percent
+    let etaSeconds = null, pct = null, remaining = null;
+    if (p.total != null && p.emaMsPerUnit != null) {
+        remaining = Math.max(0, p.total - p.done);
+        etaSeconds = Math.round((remaining * p.emaMsPerUnit) / 1000);
+        pct = p.total > 0 ? Math.min(100, Math.round((p.done / p.total) * 100)) : null;
+    } else if (p.emaMsPerUnit != null && p.done > 0) {
+        // Unknown total yet — ETA shown once we know total
+        pct = null;
+        etaSeconds = null;
+    }
+
+    return {
+        id: p.id,
+        title: p.title,
+        done: p.done,
+        total: p.total,
+        pct,
+        etaSeconds,
+        stage: p.stage,
+        startedAt: p.startedAt,
+        finished: p.finished,
+        error: p.error
+    };
+}
+
+function _showProgressSidebar_(progressId, title) {
+    const tpl = HtmlService.createTemplateFromFile('Progress');
+    tpl.progressId = progressId;
+    tpl.title = title || 'Working…';
+    const html = tpl.evaluate().setTitle('Progress');
+    SpreadsheetApp.getUi().showSidebar(html);
+}
+
+// Helpers to make sidebar safe across trigger resumes
+function _isUiAvailable_() {
+    try { SpreadsheetApp.getUi(); return true; } catch (e) { return false; }
+}
+function _maybeShowSidebar_(progressId, title) {
+    if (!_isUiAvailable_()) return;
+    try { _showProgressSidebar_(progressId, title); } catch (_) { }
+}
+// Persist the same progress id across batches so an open sidebar keeps updating
+function _ensureAnalyzeProgressId_(totalOrNull) {
+    const props = PropertiesService.getScriptProperties();
+    let id = props.getProperty('currentAnalyzeProgressId');
+    if (!id) {
+        id = _newProgress_("Analyzing transcripts (Ollama)", totalOrNull == null ? null : Number(totalOrNull));
+        props.setProperty('currentAnalyzeProgressId', id);
+    } else if (totalOrNull != null) {
+        _setProgressTotal_(id, Number(totalOrNull));
+    }
+    return id;
+}
+
+// =========================================
+/** Metrics configuration (single source of truth) */
+// =========================================
+const METRIC_DEFINITIONS = [
+    { key: "consumer_emotion", label: "Emotion Distribution", type: "single" },
+    { key: "consumer_intent", label: "Intent Distribution", type: "single" },
+    { key: "effort_level", label: "Effort Level Distribution", type: "single" },
+    { key: "outcome", label: "Outcome Distribution", type: "single" },
+    { key: "interaction_quality", label: "Interaction Quality Distribution", type: "multiJson" },
+    { key: "repeated_advice", label: "Repeated Advice", type: "single" },
+    { key: "kb_article_used", label: "KB Article Used", type: "single" },
+    { key: "data_collection_used", label: "Data Collection Used", type: "single" },
+    { key: "kb_articles", label: "Top KB Triggers", type: "kbTrigger" },
+    { key: "consumer_sentiment_end", label: "End-of-Interaction Sentiment", type: "single" },
+    { key: "hallucination_flag", label: "Hallucination Flag", type: "single" },
+    { key: "requires_handoff", label: "Requires Handoff", type: "single" },
+    { key: "hallucination_reasons", label: "Hallucination Reasons", type: "multiJson" }
+];
+
+// =========================================
+/** LLM Prompt (strict JSON, single-rule KB schema) — RAW ONLY */
+// =========================================
+const basePrompt = `You are a rigorous conversational analytics model. YOU ***MUST*** Analyze ONLY the transcript below and return ONE valid JSON object with EXACT OUTPUT keys.
+
+====================
+STRICT RULES
+====================
+• Output ONLY JSON. No prose, no markdown, no comments.
+• All string values must use standard double quotes.
+- All required top-level keys must appear **once** and only once.
+- Do not infer or use external knowledge.
+• Arrays must be JSON arrays, not strings.
+• If information is not present, return "Not Found" (or false for boolean) and keep the key.
+
+====================
+ALLOWED LABELS
+====================
+consumer_emotion & consumer_sentiment_end: "Grateful" | "Calm" | "Neutral" | "Curious" | "Confused" | "Anxious" | "Impatient" | "Disappointed" | "Frustrated" | "Angry" | "Sad" | "Hopeful" | "Relieved" | "Satisfied" | "Urgent" | "None"
+consumer_intent: "Request Info" | "Report Issue" | "Confirm Action" | "Request Help" | "Escalation" | "Other"
+interaction_quality (array, 0–3): "Smooth" | "Repetitive" | "Blocked" | "Escalated" | "Incomplete"
+effort_level: "Low" | "Moderate" | "High"
+outcome: "Resolved" | "Unresolved" | "Escalated"
+
+====================
+DETECTION NOTES
+====================
+• consumer_emotion: judge from the first two Consumer lines.
+• consumer_sentiment_end: judge from the last Consumer line AFTER the last Agent line. If none exists, use "None".
+• first_bot_response_to_first_query: capture shortest early exchange as: "consumer: … | bot_1: … | bot_2: …" (truncate each segment to <=160 chars). If the second bot line does not exist, still include as "bot_2: Not Found".
+• data_collection_used: true only if transcript contains the phrase: "Thank you for confirming. Here’s a summary of the information you’ve provided so far:" (case-insensitive, punctuation-insensitive). Otherwise false.
+• customer_goal: 1–3 words, lowercase.
+• synopsis: Past tense, one sentence.
+
+====================
+KB ARTICLE DETECTION (Schema only — extraction is handled by system)
+====================
+• kb_articles: array of objects {"response":"…","regex_trigger":"RULE KB"} where "RULE KB" covers:
+  - Polite assistance endings (exact phrases, normalized), e.g. "let me know if you need further assistance".
+  - Instructional/steps language (regex), e.g. "follow these steps", "go to", numbered steps, clear factual policy like "SIM will expire in one year".
+• Escape all quotes; no newlines (use \\n).
+• Exclude ANY privacy/legal text and ANY greetings/closers like "we're always here for you", "since we haven't received a reply", etc.
+(Note: The system will compute kb_articles deterministically from the transcript.)
+
+====================
+OUTPUT KEYS (exact)
+====================
+{
+  "consumer_emotion": "…",
+  "consumer_intent": "…",
+  "interaction_quality": ["…"],
+  "effort_level": "…",
+  "outcome": "…",
+  "synopsis": "…",
+  "customer_goal": "…",
+  "repeated_advice": "Yes" | "No" | "NA",
+  "kb_articles": [{"response":"…","regex_trigger":"RULE KB"}],
+  "kb_article_used": true | false,
+  "consumer_query_KB_triggered": "…",
+  "data_collection_used": true | false,
+  "first_bot_response_to_first_query": "consumer: … | bot_1: … | bot_2: …",
+  "consumer_sentiment_end": "…"
+}
+      
+INPUT:
+{transcript}
+`;
+// =========================================
+// Analyze-from-row utilities
+// =========================================
+
+// Map a sheet row (e.g., 2) to the internal zero-based index used by analyzeWithOllama()
+function _rowToAnalyzeIndex_(sheetRow, firstDataRow) {
+    // firstDataRow = 2 in your script (row 1 is headers)
+    return Math.max(0, Number(sheetRow) - firstDataRow);
+}
+
+// Set the starting index for the analyzer and run it
+function analyzeWithOllamaStart_(sheetRow) {
+    const sheet = _assertSheet_(_getDataSheet_(), 'analyzeWithOllamaStart_');
+    const lastRow = sheet.getLastRow();
+
+    const FIRST_DATA_ROW = 2; // you already use startRow=2 in analyzeWithOllama()
+    const n = Number(sheetRow);
+
+    if (!Number.isFinite(n) || n < FIRST_DATA_ROW || n > lastRow) {
+        SpreadsheetApp.getUi().alert(`❌ Invalid row. Enter a number between ${FIRST_DATA_ROW} and ${lastRow}.`);
+        return;
+    }
+
+    const analyzeIndex = _rowToAnalyzeIndex_(n, FIRST_DATA_ROW);
+    PropertiesService.getScriptProperties().setProperty('ollamaLastIndex', String(analyzeIndex));
+    analyzeWithOllama(); // reuse your existing function + batching/resume logic
+}
+
+// Prompt the user for a row number, then start
+function analyzeFromRowPrompt() {
+    const ui = SpreadsheetApp.getUi();
+    const resp = ui.prompt('Analyze from Row', 'Enter the sheet row number to start analyzing (e.g., 2):', ui.ButtonSet.OK_CANCEL);
+    if (resp.getSelectedButton() !== ui.Button.OK) return;
+    const value = resp.getResponseText();
+    analyzeWithOllamaStart_(value);
+}
+
+// Start from the currently selected row (top-left of selection)
+function analyzeFromSelection() {
+    const sheet = _assertSheet_(_getDataSheet_(), 'analyzeFromSelection');
+    const range = sheet.getActiveRange();
+    if (!range) { SpreadsheetApp.getUi().alert("❌ No selection found."); return; }
+    const startRow = range.getRow(); // top-left row of selection
+    analyzeWithOllamaStart_(startRow);
+}
+
+// =========================================
+//  UI Menu
+// =========================================
+function onOpen() {
+    SpreadsheetApp.getUi()
+        .createMenu("Ollama Tools")
+        .addItem("Generate Transcripts", "showDateDialog")
+        .addItem("Analyze Transcript", "analyzeWithOllama")
+        .addItem("Generate Insights", "generateInsights")
+        .addItem("Generate Insights V2", "generateInsightsV2")
+        .addItem("Analyze from Row…", "analyzeFromRowPrompt")
+        .addItem("Analyze from Selection", "analyzeFromSelection")
+        .addItem("Transpose JSON for Active Row", "transposeHere")
+        .addSeparator()
+        .addItem("Toggle Debug Logging", "toggleDebugLogging")
+        .addItem("Clear Debug Log", "clearDebugLog")
+        .addToUi();
+}
+
+function showDateDialog() {
+    const html = HtmlService
+        .createHtmlOutputFromFile('DateDialog')
+        .setWidth(400)
+        .setHeight(300);
+    SpreadsheetApp.getUi().showModalDialog(html, 'Fetch Transcripts');
+}
+
+// =========================================
+//  RAW Transcript builder (no sanitize, no merge)
+// =========================================
+function buildRawTranscript_(messageRecords) {
+    if (!Array.isArray(messageRecords)) return "";
+    const lines = [];
+    for (const m of messageRecords) {
+        const role = m?.sentBy === 'Consumer' ? 'Consumer'
+            : m?.sentBy === 'Agent' ? 'Agent'
+                : null; // skip others/system
+        if (!role) continue;
+
+        let txt = m?.messageData?.msg?.text ?? "";
+        if (txt == null || String(txt).trim() === "") continue;
+
+        // normalize internal newlines/whitespace to keep one line per message
+        txt = String(txt).replace(/\r\n|\r|\n/g, ' ').replace(/\s+/g, ' ').trim();
+
+        lines.push(`${role}: ${txt}`);
+    }
+    return lines.join("\n");
+}
+
+function isTranscriptWellFormed_(t) {
+    if (!t) return false;
+    const roleLine = /^(Consumer|Agent):\s+/;
+    const lines = String(t).split("\n").map(s => s.trim()).filter(Boolean);
+    const tagged = lines.filter(l => roleLine.test(l));
+    if (!tagged.length) return false;
+    const hasConsumer = tagged.some(l => l.startsWith("Consumer:"));
+    return hasConsumer;
+}
+
+function normalizeTranscriptString_(t) {
+    const roleLine = /^(Consumer|Agent):\s+/;
+    return String(t || "")
+        .split(/\n+/)
+        .map(s => s.replace(/\r/g, '').trim())
+        .filter(Boolean)
+        .filter(l => roleLine.test(l))      // keep only tagged lines
+        .join("\n");
+}
+
+// Helper: consumer-only extraction (for prompt and post-checks)
+function extractConsumerOnly_(pretty) {
+    return String(pretty || "")
+        .split("\n")
+        .filter(l => l.startsWith("Consumer:"))
+        .map(l => l.replace(/^Consumer:\s*/, "").trim())
+        .join("\n");
+}
+
+// =========================================
+//  LivePerson Domain + Transcript Fetch
+// =========================================
+function getServiceDomain(serviceName) {
+    const { accountId, consumer_key, consumer_secret, token, token_secret } = cfg_();
+    const domainUrl = `https://api.liveperson.net/api/account/${accountId}/service/${serviceName}/baseURI.json?version=1.0`;
+    const opts = { method: "get", muteHttpExceptions: true, headers: { Authorization: getOAuthHeader(domainUrl, "GET", { consumer_key, consumer_secret, token, token_secret }) } };
+    const resp = UrlFetchApp.fetch(domainUrl, opts);
+    const data = JSON.parse(resp.getContentText());
+    if (!data.baseURI) throw new Error('Domain API did not return baseURI');
+    return data.baseURI;
+}
+
+function generateTranscriptsWithDates(dateSelection) {
+    const { accountId, consumer_key, consumer_secret, token, token_secret } = cfg_();
+    const sheet = _assertSheet_(_getDataSheet_(), 'generateTranscriptsWithDates');
+    const BATCH_LIMIT = 20;
+    let offset = 0;
+    let totalFetched = 0;
+
+    // === progress ===
+    const progressId = _newProgress_("Fetching transcripts", null); // total unknown initially
+    _maybeShowSidebar_(progressId, "Fetching LivePerson Transcripts");
+    _setProgressStage_(progressId, "Contacting LivePerson…");
+
+    try {
+        const { start, status, latestSkillIds } = dateSelection;
+
+        sheet.clearContents();
+        // A:id | B:transcript | C:raw json | D:conversation_date_sgt
+        sheet.appendRow(["id", "transcript", "raw json", "conversation_date_sgt"]);
+
+        const agentDomain = getServiceDomain('msgHist');
+        const baseUrl = `https://${agentDomain}/messaging_history/api/account/${accountId}/conversations/search`;
+
+        let moreData = true;
+        let totalExpected = null;
+        let lastPageStarted = 0;
+
+        while (moreData) {
+            const url = `${baseUrl}?offset=${offset}&limit=${BATCH_LIMIT}`;
+            const body = { start: { from: start.from, to: start.to }, status, latestSkillIds };
+            const opts = {
+                method: "post",
+                contentType: "application/json",
+                payload: JSON.stringify(body),
+                muteHttpExceptions: true,
+                headers: { Authorization: getOAuthHeader(url, "POST", { consumer_key, consumer_secret, token, token_secret }) }
+            };
+
+            _setProgressStage_(progressId, `Reading page at offset ${offset}…`);
+            lastPageStarted = _nowMs_();
+
+            const resp = UrlFetchApp.fetch(url, opts);
+            if (resp.getResponseCode() >= 400) throw new Error(`LP search error ${resp.getResponseCode()}: ${resp.getContentText()}`);
+
+            const json = JSON.parse(resp.getContentText());
+            const convList = json.conversationHistoryRecords || [];
+
+            // Try to detect total; common fields used by APIs
+            const maybeTotal = json.totalHits || json.total || json?.metadata?.total || json?._metadata?.total || json?._metadata?.count;
+            if (maybeTotal != null && totalExpected == null) {
+                totalExpected = Number(maybeTotal);
+                if (!isNaN(totalExpected) && totalExpected >= 0) _setProgressTotal_(progressId, totalExpected);
+            }
+
+            convList.forEach(conv => {
+                const convId = conv.info?.conversationId || '';
+
+                const startTsRaw = conv.info?.startTs ?? conv.info?.start?.time ?? conv.info?.startTime ?? conv.info?.startTimestamp;
+                const startTs = toMillis_(startTsRaw);
+                const dateSGT = formatTsSGT_(startTs);
+
+                const raw = buildRawTranscript_(conv.messageRecords || []);
+                sheet.appendRow([convId, raw, "", dateSGT]);
+            });
+
+            totalFetched += convList.length;
+            offset += BATCH_LIMIT;
+            if (convList.length < BATCH_LIMIT) moreData = false;
+
+            // If API didn't give total, once we see a short page, infer total
+            if (totalExpected == null && !moreData) {
+                totalExpected = totalFetched;
+                _setProgressTotal_(progressId, totalExpected);
+            }
+
+            // Update progress -> per-unit is "conversation"
+            const pageMs = _nowMs_() - lastPageStarted;
+            _tickProgress_(progressId, convList.length, pageMs);
+            _setProgressStage_(progressId, `Fetched ${totalFetched}${totalExpected ? (' / ' + totalExpected) : ''} conversations…`);
+
+            Utilities.sleep(500); // avoid rate limiting
+        }
+
+        if (_isUiAvailable_()) SpreadsheetApp.getUi().alert(`✅ All ${totalFetched} transcripts retrieved.`);
+        _finishProgress_(progressId);
+        SpreadsheetApp.flush();
+
+    } catch (err) {
+        if (_isUiAvailable_()) SpreadsheetApp.getUi().alert('Error: ' + err.message);
+        _failProgress_(progressId, err.message);
+    }
+}
+
+function resumeTranscriptBatch() {
+    const paramStr = PropertiesService.getScriptProperties().getProperty('batchParams');
+    if (!paramStr) { if (_isUiAvailable_()) SpreadsheetApp.getUi().alert("⚠️ Batch parameters missing."); return; }
+    const dateSelection = JSON.parse(paramStr);
+    generateTranscriptsWithDates(dateSelection);
+}
+
+function testGenerateTranscripts() {
+    const selection = {
+        start: { from: new Date('2025-08-03T12:26:00Z').getTime(), to: new Date('2025-08-03T14:26:00Z').getTime() },
+        status: ['CLOSE'],
+        latestSkillIds: [3127625870]
+    };
+    PropertiesService.getScriptProperties().setProperty('batchParams', JSON.stringify(selection));
+    generateTranscriptsWithDates(selection);
+}
+
+function toMillis_(v) {
+    if (!v) return null;
+    if (typeof v === 'number') return v;
+    const t = new Date(v).getTime();
+    return isNaN(t) ? null : t;
+}
+
+function formatTsSGT_(ts) {
+    if (!ts) return '';
+    return Utilities.formatDate(new Date(ts), 'Asia/Singapore', 'yyyy-MM-dd HH:mm:ss');
+}
+
+// =========================================
+//  OAuth 1.0a (HMAC-SHA256)
+// =========================================
+function getOAuthHeader(fullUrl, method, creds) {
+    const { consumer_key, consumer_secret, token, token_secret } = creds;
+    function rfc3986Encode(str) { return encodeURIComponent(str).replace(/[!'()*]/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase()); }
+    const [baseUrl, qs = ''] = fullUrl.split('?');
+    const qp = {};
+    qs.split('&').forEach(pair => { if (!pair) return; const [k, v = ''] = pair.split('='); qp[rfc3986Encode(decodeURIComponent(k))] = rfc3986Encode(decodeURIComponent(v)); });
+    const oauthParams = {
+        oauth_consumer_key: rfc3986Encode(consumer_key),
+        oauth_token: rfc3986Encode(token),
+        oauth_nonce: rfc3986Encode(Utilities.getUuid().replace(/-/g, '')),
+        oauth_timestamp: `${Math.floor(Date.now() / 1000)}`,
+        oauth_signature_method: 'HMAC-SHA256',
+        oauth_version: '1.0'
+    };
+    const allParams = Object.assign({}, qp, oauthParams);
+    const sortedKeys = Object.keys(allParams).sort();
+    const paramString = sortedKeys.map(k => `${k}=${allParams[k]}`).join('&');
+    const signatureBaseString = [method.toUpperCase(), rfc3986Encode(baseUrl), rfc3986Encode(paramString)].join('&');
+    const signingKey = `${rfc3986Encode(consumer_secret)}&${rfc3986Encode(token_secret)}`;
+    const signatureBytes = Utilities.computeHmacSha256Signature(signatureBaseString, signingKey);
+    const signature = Utilities.base64Encode(signatureBytes);
+    oauthParams.oauth_signature = rfc3986Encode(signature);
+    const header = 'OAuth ' + Object.keys(oauthParams).sort().map(k => `${k}="${oauthParams[k]}"`).join(', ');
+    return header;
+}
+
+// Pin your data sheet name here
+const DATA_SHEET_NAME = 'Sheet1';
+
+function _getDataSheet_() {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    // Prefer a named sheet; fall back to first if missing
+    return ss.getSheetByName(DATA_SHEET_NAME) || ss.getSheets()[0];
+}
+
+function _assertSheet_(sheet, where) {
+    if (!sheet || typeof sheet.getRange !== 'function') {
+        throw new Error(`${where || 'Unknown'}: data sheet not found. Check DATA_SHEET_NAME='${DATA_SHEET_NAME}'.`);
+    }
+    return sheet;
+}
+
+// Safer JSON → row transposition.
+// - Resolves the sheet if null
+// - Auto-creates missing headers
+// - Ensures rows/cols exist before write
+function transposeJsonResults(sheet, row, jsonText, startCol = 5) {
+    sheet = sheet || _getDataSheet_();
+    _assertSheet_(sheet, 'transposeJsonResults');
+
+    // Parse JSON (with tolerant fallback)
+    let parsedObject = null;
+    try {
+        parsedObject = JSON.parse(jsonText);
+    } catch (e1) {
+        try {
+            const lines = String(jsonText || '')
+                .trim()
+                .replace(/```json|```/g, '')
+                .replace(/[“”]/g, '"')
+                .split('\n');
+            const keyValueMap = {};
+            let currentKey = null, currentValue = '';
+            for (let line of lines) {
+                line = line.trim();
+                if (!line || line === '{' || line === '}' || line === '[' || line === ']') continue;
+                const match = line.match(/^"([^"\\]+)":\s*(.+?)(,?)$/);
+                if (match) {
+                    const key = match[1];
+                    let value = match[2].trim();
+                    if (value.endsWith('{') || value.endsWith('[')) { currentKey = key; currentValue = value; }
+                    else { keyValueMap[key] = value.replace(/,$/, ''); currentKey = null; }
+                } else if (currentKey) {
+                    currentValue += ' ' + line;
+                    if (line.endsWith('}') || line.endsWith(']')) { keyValueMap[currentKey] = currentValue.replace(/,$/, ''); currentKey = null; }
+                }
+            }
+            const fixedJson = `{${Object.entries(keyValueMap).map(([k, v]) => `\"${k}\": ${v}`).join(',')}}`;
+            parsedObject = JSON.parse(fixedJson);
+        } catch (e2) {
+            _ensureRowsCols_(sheet, row, startCol);
+            sheet.getRange(row, startCol).setValue('⛔ Invalid JSON: ' + e2.message);
+            return;
+        }
+    }
+
+    if (!parsedObject || typeof parsedObject !== 'object') {
+        _ensureRowsCols_(sheet, row, startCol);
+        sheet.getRange(row, startCol).setValue('⛔ Failed to parse');
+        return;
+    }
+
+    // Header map
+    const lastCol = Math.max(1, sheet.getLastColumn());
+    const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+    const headerToCol = {};
+    headers.forEach((h, i) => { if (String(h)) headerToCol[String(h)] = i + 1; });
+
+    // Write keys
+    for (const key in parsedObject) {
+        if (!Object.prototype.hasOwnProperty.call(parsedObject, key)) continue;
+
+        let col = headerToCol[key];
+        if (!col) {
+            col = sheet.getLastColumn() + 1;
+            _ensureRowsCols_(sheet, 1, col);
+            sheet.getRange(1, col).setValue(key);
+            headerToCol[key] = col;
+        }
+
+        let value = parsedObject[key];
+        if (typeof value === 'object') {
+            try { value = JSON.stringify(value); } catch { value = '⛔ Invalid object'; }
+        }
+
+        _ensureRowsCols_(sheet, row, col);
+        sheet.getRange(row, col).setValue(value);
+    }
+}
+
+function _ensureRowsCols_(sheet, row, col) {
+    if (sheet.getMaxRows() < row) {
+        sheet.insertRowsAfter(sheet.getMaxRows(), row - sheet.getMaxRows());
+    }
+    if (sheet.getMaxColumns() < col) {
+        sheet.insertColumnsAfter(sheet.getMaxColumns(), col - sheet.getMaxColumns());
+    }
+}
+
+// Helper: transpose JSON for the *active* row (menu-safe)
+function transposeHere() {
+    const sheet = _assertSheet_(_getDataSheet_(), 'transposeHere');
+    const r = sheet.getActiveRange();
+    if (!r) { SpreadsheetApp.getUi().alert('Select a row first.'); return; }
+    const row = r.getRow();
+    if (row < 2) { SpreadsheetApp.getUi().alert('Pick a data row (>= 2).'); return; }
+
+    const jsonText = sheet.getRange(row, 3).getValue(); // column C = raw json
+    if (!jsonText) { SpreadsheetApp.getUi().alert('No JSON found in column C for the selected row.'); return; }
+
+    transposeJsonResults(sheet, row, jsonText, 5); // parsed fields from col E
+    SpreadsheetApp.getUi().alert('✅ Transposed.');
+}
+
+// =========================================
+/** KB extractor (deterministic single-rule) */
+// =========================================
+function _normalizeForKB_(s) {
+    return String(s || '')
+        .toLowerCase()
+        .replace(/[“”]/g, '"')
+        .replace(/[‘’]/g, "'")
+        .replace(/https?:\/\/\S+/g, '')        // drop links for matching
+        .replace(/[^a-z0-9\s]/g, ' ')          // keep letters/digits/spaces
+        .replace(/\s+/g, ' ')                  // collapse spaces
+        .trim();
+}
+
+const KB_EXACT_POLITE_ENDINGS = [
+    "i hope this information helps let me know if you need anything else",
+    "i hope that was helpful what’s next",
+    "i hope that was helpful whats next",
+    "let me know if you need further assistance",
+    "let me know if there’s anything else i can assist you with",
+    "let me know if theres anything else i can assist you with",
+    "was this information helpful",
+    "how else can i assist you?"
+];
+
+const KB_INSTRUCTIONAL_REGEX = /\b(you can|just go to|simply|here(?:’s| is)? how (?:you\s)?can|follow these steps?|step\s*\d+|first,?|next,?|then,?|finally,?|in order to|to do this|is defined as|means that|refers to|what this means is|gomo\s*(?:app|ph|shop)|linked\s*account|account management|data usage|roaming promo|for your convenience|easily|in just a few steps|available through the|will expire|you will receive|should receive|to avoid\b.*\bensure|you would need to)\b/i;
+
+const KB_POLICY_REGEX = /\b(once\s+.*?\s+(?:is|was)\s+deactivated\s*,?\s*(?:it\s+)?(?:cannot|can\s*not|not\s+possible|no\s+longer\s+possible)\b|(?:cannot|can\s*not|not\s+possible|does\s+not\s+allow|no\s+ability)\s+to\s+(?:recover|retain|reactivate|reassign|reuse)\b|policy\s+(?:does\s+not\s+allow|prohibits)\b|you\s+would\s+need\s+to\s+(?:purchase|buy)\b.*|will\s+come\s+with\s+a\s+different\s+number\b)/i;
+
+const KB_NEGATIVE_REGEX = /\b(privacy|data privacy|policy (?:notice|update)|data protection|by continuing|allow|i'?m here to assist|could you clarify|let me know how i can help|we'?re always here for you|close this chat|since we haven't received a reply|message us if you need help again)\b/i;
+
+function extractKbArticlesDeterministic_(prettyTranscript) {
+    const agentLines = String(prettyTranscript)
+        .split(/\n+/)
+        .map(s => s.trim())
+        .filter(s => s.startsWith('Agent:'))
+        .map(s => s.replace(/^Agent:\s*/, ''));
+
+    const results = [];
+    const seen = new Set();
+
+    for (const full of agentLines) {
+        // Sentence-like chunks
+        const sentences = full.split(/(?<=[.!?])\s+/);
+        for (let sent of sentences) {
+            const original = sent.trim();
+            if (!original) continue;
+
+            if (KB_NEGATIVE_REGEX.test(original)) continue;
+            if (original.split(/\s+/).length < 8) continue;
+
+            const norm = _normalizeForKB_(original);
+            if (!norm) continue;
+
+            const isExactPolite = KB_EXACT_POLITE_ENDINGS.includes(norm);
+            const isInstructional = KB_INSTRUCTIONAL_REGEX.test(norm);
+            const isPolicy = KB_POLICY_REGEX.test(norm);
+            if (!(isExactPolite || isInstructional || isPolicy)) continue;
+
+            if (!full.includes(original)) continue;
+
+            const response = original
+                .replace(/\n/g, '\\n')
+                .replace(/\\"/g, '"')
+                .replace(/"/g, '\\"');
+
+            if (!seen.has(response)) {
+                results.push({ response, regex_trigger: "RULE KB" });
+                seen.add(response);
+            }
+        }
+    }
+
+    return results;
+}
+
+// =========================================
+//  Bot Capability Profile (customize per brand/bot)
+// =========================================
+const CAPABILITY_PROFILE = {
+    can: [
+        /provide (information|steps|links)/i,
+        /collect (details|information|contact)/i,
+        /check (faq|kb|eligibility info)/i,
+    ],
+    cannot: [
+        /deactivat(e|ing) (your )?(line|number|sim|account)/i,
+        /terminat(e|ing) (your )?(service|number|account)/i,
+        /refund|reverse (charges|fee|payment)/i,
+        /waiv(e|ing) (fees?|charges?)/i,
+        /chang(e|ing) (plan|ownership|name|address)/i,
+        /issu(e|ing) (replacement|new sim|esim)/i,
+        /fix(ed|ing)? (the|your) (issue|problem)/i,
+        /reactivat(e|ing) (your )?(number|account|service)/i,
+        /process(ing)? (the )?(request|termination|deactivation|refund)/i,
+        /apply(ing)? (the )?(discount|credit)/i,
+        /disable|enable (feature|service)/i,
+    ],
+    closureConfident: [
+        /glad I could help/i,
+        /issue (has been|is) resolved/i,
+        /all set now/i,
+        /I have (processed|completed)/i,
+        /your (number|account|service) (is|has been) (deactivated|terminated|fixed)/i
+    ],
+    escalationSignals: [
+        /hand(ing)? (this )?over to a (human|agent|specialist)/i,
+        /creat(ed|ing) (a )?(ticket|case|reference)/i,
+        /case (no\.?|number)/i,
+        /our (team|agent) will contact you/i
+    ],
+    piiCollection: [
+        /name/i, /email/i, /address/i, /id/i, /account number/i, /phone/i
+    ]
+};
+
+// Normalize & slice agent lines
+function _agentLines_(prettyTranscript) {
+    return String(prettyTranscript || "")
+        .split(/\n+/)
+        .map(s => s.trim())
+        .filter(s => s.startsWith("Agent:"))
+        .map(s => s.replace(/^Agent:\s*/, ''));
+}
+
+// Utility: regex hit collector
+function _hits_(lines, patterns) {
+    const matches = [];
+    for (const ln of lines) {
+        for (const rx of patterns) {
+            const m = ln.match(rx);
+            if (m) matches.push({ line: ln, pattern: rx.toString() });
+        }
+    }
+    return matches;
+}
+
+function computeRequiresHandoff_(obj, agentLines) {
+    const out = String(obj?.outcome || "").toLowerCase();
+    const iq = Array.isArray(obj?.interaction_quality)
+        ? obj.interaction_quality.map(s => String(s).toLowerCase())
+        : [];
+
+    const endSent = String(obj?.consumer_sentiment_end || "").toLowerCase();
+
+    const joinedAgents = (agentLines || []).join(" ");
+
+    const escalatedNow = /(\bescalat(?:e|ed|ing)\b|\bhand(?:-|\s*)over\b|\btransfer(?:red|ring)?\b|\bhuman agent\b|\bspecialist\b|\bticket\b|\bcase (no\.?|number)\b)/i
+        .test(joinedAgents);
+
+    const blocked = out === "unresolved" || iq.includes("blocked") || iq.includes("incomplete");
+    const clearlyResolved = out === "resolved" || iq.includes("smooth");
+
+    if (blocked) return true;          // stuck → needs handoff
+    if (escalatedNow) return false;    // already escalated
+    if (clearlyResolved) return false; // seems done
+
+    // negative/none sentiment at end, with no resolution signals
+    if (/(frustrated|angry|disappointed|urgent|anxious|impatient|none)/i.test(endSent))
+        return true;
+
+    return false; // default: do not force handoff
+}
+
+// Core detector
+function detectHallucination_(prettyTranscript, profile = CAPABILITY_PROFILE) {
+    const agents = _agentLines_(prettyTranscript);
+    const reasons = [];
+    const risky = [];
+
+    const forbidden = _hits_(agents, profile.cannot);
+    if (forbidden.length) {
+        reasons.push("Forbidden promises (action the bot cannot perform).");
+        risky.push(...forbidden.map(h => `PROMISE: ${h.line}`));
+    }
+
+    const confident = _hits_(agents, profile.closureConfident);
+    const escalation = _hits_(agents, profile.escalationSignals);
+    if (confident.length && escalation.length === 0) {
+        reasons.push("Overconfident closure without evidence of escalation/ticket.");
+        risky.push(...confident.map(h => `CLOSURE: ${h.line}`));
+    }
+
+    const pii = _hits_(agents, profile.piiCollection);
+    const processClaims = _hits_(agents, [/I'?ll (proceed|process|handle|take care)/i, /allow me a moment to (proceed|process)/i]);
+    if (pii.length && processClaims.length && escalation.length === 0) {
+        reasons.push("PII collection paired with implied processing but no escalation/ticket proof.");
+        risky.push(...processClaims.map(h => `PROCESS: ${h.line}`));
+    }
+
+    const hallucination_flag = reasons.length > 0;
+
+    return {
+        hallucination_flag,
+        // requires_handoff is now computed later with parsed fields
+        _agentLines: agents,
+        hallucination_reasons: Array.from(new Set(reasons)),
+        risky_phrases: Array.from(new Set(risky))
+    };
+}
+
+// =========================================
+//  Ollama Analysis (batched + retries) + Progress/ETA
+// =========================================
+// =========================================
+//  Ollama Analysis (batched + retries) + Progress/ETA  [PATCHED WITH DEBUG]
+// =========================================
+function analyzeWithOllama() {
+    const { cloudflared } = cfg_();
+    const sheet = _assertSheet_(_getDataSheet_(), 'analyzeWithOllama');
+
+    // A:id | B:transcript | C:raw json | D:conversation_date_sgt | E..: parsed fields
+    const idCol = 1, prettyCol = 2, rawCol = 3, parsedStart = 5; // A, B, C, D(date), E..
+    const startRow = 2;
+    const BATCH_SIZE = 7;
+    const PAUSE_MS = 1500; // Between LLM calls
+
+    const keys = [
+        "consumer_emotion", "consumer_intent", "interaction_quality", "effort_level", "outcome",
+        "synopsis", "customer_goal",
+        "repeated_advice", "kb_articles", "kb_article_used",
+        "consumer_query_KB_triggered", "data_collection_used",
+        "first_bot_response_to_first_query",
+        "consumer_sentiment_end",
+        "hallucination_flag", "requires_handoff", "hallucination_reasons", "risky_phrases"
+    ];
+    sheet.getRange(1, parsedStart, 1, keys.length).setValues([keys]);
+
+    const lastRow = sheet.getLastRow();
+    const analyzeIndex = parseInt(PropertiesService.getScriptProperties().getProperty('ollamaLastIndex') || '0', 10);
+
+    const url_api = cloudflared.replace(/\/$/, '') + '/api/generate';
+
+    const totalToProcess = Math.max(0, (lastRow - 1) - analyzeIndex);
+    if (totalToProcess === 0) {
+        if (_isUiAvailable_()) SpreadsheetApp.getUi().alert("Nothing to analyze — no rows after the selected start.");
+        return;
+    }
+    const progressId = _ensureAnalyzeProgressId_(totalToProcess);
+    _maybeShowSidebar_(progressId, "Analyzing with Ollama");
+    _setProgressStage_(progressId, `Queued ${totalToProcess} row(s)…`);
+    let batchStartMs = _nowMs_();
+
+    for (let i = analyzeIndex; i < Math.min(analyzeIndex + BATCH_SIZE, lastRow - 1); i++) {
+        const row = startRow + i;
+        const pretty = normalizeTranscriptString_(sheet.getRange(row, prettyCol).getValue());
+
+        if (!isTranscriptWellFormed_(pretty)) {
+            _dbgLog_(row, 'SKIP', sheet.getRange(row, prettyCol).getValue(), 'invalid transcript format');
+            sheet.getRange(row, rawCol).setValue("Invalid transcript format");
+            // progress still advances for this row
+            const perRowMs = _nowMs_() - batchStartMs;
+            _tickProgress_(progressId, 1, perRowMs);
+            _setProgressStage_(progressId, `Analyzed ${i - analyzeIndex + 1} / ${totalToProcess} row(s)…`);
+            batchStartMs = _nowMs_();
+            continue;
+        }
+
+        const consumerOnly = extractConsumerOnly_(pretty);
+        const transcriptForLLM = [
+            "RAW TRANSCRIPT:",
+            pretty,
+            "",
+            "CONSUMER LINES (use ONLY this block for customer_goal & consumer_sentiment_end):",
+            consumerOnly || "(none)"
+        ].join("\n");
+
+        const prompt = basePrompt.replace('{transcript}', transcriptForLLM);
+
+        try {
+            const callStart = _nowMs_();
+
+            // ---------- DEBUG #1 + #2: before call (PROMPT, BEFORE_CALL)
+            _dbgLog_(row, 'PROMPT', _dbgTrunc_(prompt, _DBG_LIMITS_.promptMax), 'prompt');
+            _dbgLog_(row, 'BEFORE_CALL', { model: llm_model, url: url_api, opts: { temperature: 0.0, top_p: 0.9, format: 'json' } }, 'about to call Ollama');
+
+            const bodyText = callOllamaWithRetries_(url_api, {
+                model: llm_model,
+                prompt,
+                format: 'json',              // request JSON-only payload from Ollama
+                stream: false,
+                options: { temperature: 0.0, top_p: 0.9 } // deterministic
+            });
+
+            const callMs = _nowMs_() - callStart;
+
+            // ---------- DEBUG #3: after call (AFTER_CALL)
+            _dbgLog_(row, 'AFTER_CALL', _dbgTrunc_(bodyText, _DBG_LIMITS_.bodyMax), 'ollama raw envelope');
+
+            // Parse the Ollama envelope
+            let modelOut, objForRow;
+            try {
+                const envelope = JSON.parse(bodyText);
+                modelOut = envelope.response ?? '';
+                if (!modelOut) throw new Error("Empty 'response' from model");
+                // ---------- DEBUG #4: extracted model response (MODEL_RESPONSE)
+                _dbgLog_(row, 'MODEL_RESPONSE', _dbgTrunc_(modelOut, _DBG_LIMITS_.bodyMax), 'envelope.response');
+            } catch (e) {
+                _dbgLog_(row, 'PARSE_ERROR', { error: e.message, bodySnippet: _dbgTrunc_(bodyText, 800) }, 'envelope parse failed');
+                throw new Error("Ollama response not JSON envelope: " + _dbgTrunc_(bodyText, 800));
+            }
+
+            // Extract a clean JSON object string (handles stray fences if any)
+            let jsonStr;
+            try {
+                jsonStr = (typeof _extractJsonObjectString_ === 'function')
+                    ? _extractJsonObjectString_(modelOut)
+                    : modelOut; // rely on format:'json' if extractor not present
+                _dbgLog_(row, 'JSON_EXTRACT', _dbgTrunc_(jsonStr, _DBG_LIMITS_.jsonMax), 'candidate JSON');
+                objForRow = JSON.parse(jsonStr);
+            } catch (e) {
+                _dbgLog_(row, 'JSON_PARSE_ERROR', { error: e.message, modelOut: _dbgTrunc_(modelOut, 800) }, 'payload parse failed');
+                throw new Error("Model did not return valid JSON payload: " + (modelOut || '[empty]'));
+            }
+
+            // Override kb_articles with deterministic extraction (single-rule)
+            const kbDet = extractKbArticlesDeterministic_(pretty);
+            objForRow.kb_articles = kbDet;
+            objForRow.kb_article_used = kbDet.length > 0;
+
+            // Hallucination detection & requires_handoff
+            const hallucination = detectHallucination_(pretty);
+            objForRow.hallucination_flag = hallucination.hallucination_flag;
+            objForRow.hallucination_reasons = hallucination.hallucination_reasons;
+            objForRow.risky_phrases = hallucination.risky_phrases;
+            objForRow.requires_handoff = objForRow.hallucination_flag
+                ? true
+                : computeRequiresHandoff_(objForRow, hallucination._agentLines);
+
+            const finalJsonStr = JSON.stringify(objForRow);
+
+            // ---------- DEBUG #5: final JSON (FINAL_JSON)
+            _dbgLog_(row, 'FINAL_JSON', _dbgTrunc_(finalJsonStr, _DBG_LIMITS_.jsonMax), 'to-sheet');
+
+            sheet.getRange(row, rawCol).setValue(finalJsonStr);
+            transposeJsonResults(sheet, row, finalJsonStr, parsedStart);
+
+            // progress tick — weight ETA by model time
+            _tickProgress_(progressId, 1, callMs);
+            _setProgressStage_(progressId, `Analyzed ${i - analyzeIndex + 1} / ${totalToProcess} row(s)…`);
+            batchStartMs = _nowMs_();
+
+        } catch (e) {
+            _dbgLog_(row, 'ROW_ERROR', { error: e.message }, 'caught in loop');
+            sheet.getRange(row, rawCol).setValue('Error: ' + e.message);
+            const perRowMs = _nowMs_() - batchStartMs;
+            _tickProgress_(progressId, 1, perRowMs);
+            _setProgressStage_(progressId, `Analyzed ${i - analyzeIndex + 1} / ${totalToProcess} row(s) (error) …`);
+            batchStartMs = _nowMs_();
+        }
+
+        Utilities.sleep(PAUSE_MS);
+    }
+
+    const nextIndex = analyzeIndex + BATCH_SIZE;
+    if (nextIndex < (lastRow - 1)) {
+        PropertiesService.getScriptProperties().setProperty('ollamaLastIndex', nextIndex.toString());
+        _deleteTriggersByHandler_('resumeOllamaAnalysis'); // avoid duplicates
+        ScriptApp.newTrigger('resumeOllamaAnalysis').timeBased().after(60 * 1000).create();
+    } else {
+        PropertiesService.getScriptProperties().deleteProperty('ollamaLastIndex');
+        PropertiesService.getScriptProperties().deleteProperty('currentAnalyzeProgressId');
+        clearAllScriptTriggers();
+        if (_isUiAvailable_()) SpreadsheetApp.getUi().alert("✅ All rows analyzed.");
+        _finishProgress_(progressId);
+    }
+
+    SpreadsheetApp.flush();
+}
+
+// =========================================
+//  Ollama call with retries
+// =========================================
+function callOllamaWithRetries_(url, payload, maxRetries = 4) {
+    let attempt = 0, wait = 1000;
+    while (true) {
+        try {
+            const resp = UrlFetchApp.fetch(url, {
+                method: 'post',
+                contentType: 'application/json',
+                payload: JSON.stringify(payload),
+                muteHttpExceptions: true,
+                followRedirects: true
+            });
+            const code = resp.getResponseCode();
+            const text = resp.getContentText();
+            if (code >= 200 && code < 300) return text;
+            if (code === 429 || (code >= 500 && code < 600))
+                throw new Error(`LLM ${code}: ${text}`);
+            throw new Error(`LLM ${code}: ${text}`);
+        } catch (err) {
+            attempt++;
+            if (attempt > maxRetries) throw err;
+            Utilities.sleep(wait);
+            wait = Math.min(wait * 2, 10000);
+        }
+    }
+}
+
+function resumeOllamaAnalysis() { analyzeWithOllama(); }
+
+function _deleteTriggersByHandler_(handler) {
+    ScriptApp.getProjectTriggers()
+        .filter(t => t.getHandlerFunction && t.getHandlerFunction() === handler)
+        .forEach(t => ScriptApp.deleteTrigger(t));
+}
+
+function parseDateSGT_(s) {
+    if (!s) return null;
+    const ms = new Date(s).getTime(); // Sheets stores as string; this handles both
+    return isNaN(ms) ? null : new Date(ms);
+}
+function toDayKey_(d) { return Utilities.formatDate(d, 'Asia/Singapore', 'yyyy-MM-dd'); }
+function toHour_(d) { return Number(Utilities.formatDate(d, 'Asia/Singapore', 'HH')); }
+function toWeekday_(d) { return Utilities.formatDate(d, 'Asia/Singapore', 'EEE'); } // Mon..Sun
+
+function ensureSheet_(ss, name) {
+    const s = ss.getSheetByName(name);
+    return s ? (s.clear(), s) : ss.insertSheet(name);
+}
+function writeTable_(sheet, startR, startC, rows) {
+    if (!rows.length) return startR;
+    sheet.getRange(startR, startC, rows.length, rows[0].length).setValues(rows);
+    return startR + rows.length + 2;
+}
+function rollingAvg_(arr, window = 7) {
+    const out = []; let sum = 0; const q = [];
+    for (let i = 0; i < arr.length; i++) {
+        sum += arr[i]; q.push(arr[i]);
+        if (q.length > window) sum -= q.shift();
+        out.push(Number((sum / q.length).toFixed(2)));
+    }
+    return out;
+}
+
+// =========================================
+//  Analytics (uses METRIC_DEFINITIONS)
+// =========================================
+function generateInsights() {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName('Sheet1') || SpreadsheetApp.getActiveSheet();
+    const data = sheet.getDataRange().getValues();
+    if (data.length < 2) { SpreadsheetApp.getUi().alert("❌ No data to analyze."); return; }
+
+    const headers = data[0];
+    const idx = key => headers.indexOf(key);
+    const getVal = (row, key) => idx(key) >= 0 ? row[idx(key)] : null;
+
+    const metrics = METRIC_DEFINITIONS.reduce((obj, def) => (obj[def.key] = {}, obj), {});
+    let total = 0, valid = 0, invalid = 0;
+    const transcriptLengths = [];
+    let missingFirstBot = 0;
+
+    const increment = (map, key) => { if (key === undefined || key === null || key === "") return; const k = String(key); map[k] = (map[k] || 0) + 1; };
+
+    for (let i = 1; i < data.length; i++) {
+        total++;
+        const row = data[i];
+        const hasCore = getVal(row, "consumer_emotion") && getVal(row, "consumer_intent");
+        if (!hasCore) { invalid++; continue; }
+        valid++;
+
+        METRIC_DEFINITIONS.forEach(def => {
+            const cell = getVal(row, def.key);
+            switch (def.type) {
+                case 'single':
+                    increment(metrics[def.key], cell);
+                    break;
+                case 'multiJson':
+                    if (!cell) break;
+                    try { (typeof cell === 'string' ? JSON.parse(cell) : cell).forEach(v => increment(metrics[def.key], v)); }
+                    catch { increment(metrics[def.key], cell); }
+                    break;
+                case 'kbTrigger':
+                    if (!cell) break;
+                    try { (typeof cell === 'string' ? JSON.parse(cell) : cell).forEach(kb => increment(metrics[def.key], kb.regex_trigger)); }
+                    catch { }
+                    break;
+            }
+        });
+
+        const firstBot = getVal(row, "first_bot_response_to_first_query");
+        if (!firstBot || firstBot === 'Not Found') missingFirstBot++;
+
+        const transcript = getVal(row, 'transcript');
+        if (transcript) transcriptLengths.push(String(transcript).split(/\s+/).length);
+    }
+
+    const avgLen = transcriptLengths.length ? (transcriptLengths.reduce((a, b) => a + b, 0) / transcriptLengths.length).toFixed(1) : 0;
+
+    let analyticsSheet = ss.getSheetByName('Analytics');
+    if (!analyticsSheet) analyticsSheet = ss.insertSheet('Analytics');
+    else analyticsSheet.clear();
+
+    let rowIdx = 1;
+    const out = (label, val) => analyticsSheet.getRange(rowIdx++, 1, 1, 2).setValues([[label, val]]);
+
+    out("Total Conversations", total);
+    out("Valid Conversations Analyzed", valid);
+    out("Invalid or Skipped Rows", invalid);
+    out("Avg Transcript Word Count", avgLen);
+    out("Missing First Bot Responses", missingFirstBot);
+    rowIdx++;
+
+    const writeDist = (label, map, denom) => {
+        analyticsSheet.getRange(rowIdx++, 1).setValue(label);
+        analyticsSheet.getRange(rowIdx++, 1, 1, 3).setValues([["Category", "Count", "%"]]);
+        Object.entries(map).sort((a, b) => b[1] - a[1]).forEach(([k, v]) => {
+            const pct = denom ? ((v / denom) * 100).toFixed(1) + "%" : "";
+            analyticsSheet.getRange(rowIdx++, 1, 1, 3).setValues([[k, v, pct]]);
+        });
+        rowIdx++;
+    };
+
+    METRIC_DEFINITIONS.forEach(def => {
+        const denom = valid;
+        writeDist(def.label, metrics[def.key], denom);
+    });
+}
+
+function generateInsightsV2() {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName('Sheet1') || SpreadsheetApp.getActiveSheet();
+    const data = sheet.getDataRange().getValues();
+    if (data.length < 2) { SpreadsheetApp.getUi().alert("❌ No data to analyze."); return; }
+
+    // Header indexes
+    const headers = data[0];
+    const idx = k => headers.indexOf(k);
+    const at = (row, key) => { const i = idx(key); return i >= 0 ? row[i] : null; };
+
+    // Expected columns
+    const iDate = idx('conversation_date_sgt');
+    if (iDate < 0) { SpreadsheetApp.getUi().alert("❌ Missing 'conversation_date_sgt' column."); return; }
+
+    // Prepare accumulators
+    const byDay = {}; // yyyy-MM-dd -> counters
+    const byHourWeekday = {}; // hour -> weekday -> count
+    const KPIs = { total: 0, resolved: 0, unresolved: 0, handoff: 0, kb: true ? 0 : 0, halluc: 0 };
+
+    // Core metric keys for your prompt outputs
+    const K_OUTCOME = 'outcome';
+    const K_KB_USED = 'kb_article_used';
+    const K_HANDOFF = 'requires_handoff';
+    const K_HALLUC = 'hallucination_flag';
+
+    for (let r = 1; r < data.length; r++) {
+        const row = data[r];
+        const dateStr = row[iDate];
+        const d = parseDateSGT_(dateStr);
+        if (!d) continue;
+
+        const dayKey = toDayKey_(d);
+        const hour = toHour_(d);
+        const weekday = toWeekday_(d);
+
+        if (!byDay[dayKey]) byDay[dayKey] = { total: 0, resolved: 0, unresolved: 0, handoff: 0, kb: 0, halluc: 0 };
+
+        const outcome = at(row, K_OUTCOME);
+        const kbUsed = at(row, K_KB_USED);
+        const handoff = at(row, K_HANDOFF);
+        const halluc = at(row, K_HALLUC);
+
+        byDay[dayKey].total++;
+        KPIs.total++;
+        if (String(outcome).toLowerCase() === "resolved") { byDay[dayKey].resolved++; KPIs.resolved++; }
+        else if (String(outcome).toLowerCase() === "unresolved") { byDay[dayKey].unresolved++; KPIs.unresolved++; }
+
+        if (kbUsed === true || String(kbUsed).toLowerCase() === 'true') { byDay[dayKey].kb++; KPIs.kb++; }
+        if (handoff === true || String(handoff).toLowerCase() === 'true') { byDay[dayKey].handoff++; KPIs.handoff++; }
+        if (halluc === true || String(halluc).toLowerCase() === 'true') { byDay[dayKey].halluc++; KPIs.halluc++; }
+
+        if (!byHourWeekday[hour]) byHourWeekday[hour] = {};
+        byHourWeekday[hour][weekday] = (byHourWeekday[hour][weekday] || 0) + 1;
+    }
+
+    const out = ensureSheet_(ss, 'AnalyticsV2');
+    let row = 1;
+
+    const resRate = KPIs.total ? (KPIs.resolved / KPIs.total) : 0;
+    const handoffRate = KPIs.total ? (KPIs.handoff / KPIs.total) : 0;
+    const kbRate = KPIs.total ? (KPIs.kb / KPIs.total) : 0;
+    const hallucRate = KPIs.total ? (KPIs.halluc / KPIs.total) : 0;
+
+    row = writeTable_(out, row, 1, [
+        ["KPI", "Value"],
+        ["Total Conversations", KPIs.total],
+        ["Resolution Rate", (resRate * 100).toFixed(1) + "%"],
+        ["Handoff Rate", (handoffRate * 100).toFixed(1) + "%"],
+        ["KB Coverage", (kbRate * 100).toFixed(1) + "%"],
+        ["Hallucination Rate", (hallucRate * 100).toFixed(1) + "%"],
+    ]);
+
+    const dayKeys = Object.keys(byDay).sort(); // chronological (yyyy-MM-dd)
+    const dailyRows = [["Date", "Total", "Resolved", "Unresolved", "Handoffs", "KB Used", "Hallucinations", "Resolved 7d MA", "Handoff 7d MA"]];
+    const totArr = [], resArr = [], handArr = [];
+    dayKeys.forEach(k => {
+        const d = byDay[k];
+        dailyRows.push([k, d.total, d.resolved, d.unresolved, d.handoff, d.kb, d.halluc, "", ""]);
+        totArr.push(d.total); resArr.push(d.resolved); handArr.push(d.handoff);
+    });
+
+    const resRateSeries = dayKeys.map((_, i) => resArr[i] && totArr[i] ? Number((resArr[i] / totArr[i] * 100).toFixed(2)) : 0);
+    const handRateSeries = dayKeys.map((_, i) => handArr[i] && totArr[i] ? Number((handArr[i] / totArr[i] * 100).toFixed(2)) : 0);
+    const resMA = rollingAvg_(resRateSeries, 7);
+    const handMA = rollingAvg_(handRateSeries, 7);
+
+    for (let i = 0; i < dayKeys.length; i++) {
+        dailyRows[i + 1][7] = resMA[i];     // Resolved 7d MA (%)
+        dailyRows[i + 1][8] = handMA[i];    // Handoff 7d MA (%)
+    }
+    row = writeTable_(out, row, 1, [["Daily Trends (with 7-day moving averages)"]]);
+    row = writeTable_(out, row, 1, dailyRows);
+
+    const weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    const heatRows = [["Hour"].concat(weekdays)];
+    for (let h = 0; h < 24; h++) {
+        const line = [h.toString().padStart(2, '0')];
+        weekdays.forEach(wd => line.push((byHourWeekday[h] && byHourWeekday[h][wd]) ? byHourWeekday[h][wd] : 0));
+        heatRows.push(line);
+    }
+    row = writeTable_(out, row, 1, [["Volume Heatmap (Hour × Weekday)"]]);
+    row = writeTable_(out, row, 1, heatRows);
+    /*
+      try {
+        const startRow = row - heatRows.length - dailyRows.length - 6; // approximate anchor above
+        const chart = out.newChart().asLineChart()
+          .addRange(out.getRange(startRow+1, 1, dailyRows.length-1, 2)) // Date, Total
+          .setPosition(startRow, 10, 0, 0)
+          .setOption('title', 'Daily Total Conversations')
+          .build();
+        out.insertChart(chart);
+    
+        const chart2 = out.newChart().asLineChart()
+          .addRange(out.getRange(startRow+1, 1, dailyRows.length-1, 1)) // Date
+          .addRange(out.getRange(startRow+1, 8, dailyRows.length-1, 1)) // Resolved 7d MA
+          .setPosition(startRow+16, 10, 0, 0)
+          .setOption('title', 'Resolution Rate (7-day MA, %)')
+          .build();
+        out.insertChart(chart2);
+      } catch (e) {
+        // Charts are best-effort; ignore if ranges shift
+      }
+    */
+    SpreadsheetApp.flush();
+    SpreadsheetApp.getUi().alert("✅ AnalyticsV2 generated.");
+}
+
+// =========================================
+//  Triggers cleanup
+// =========================================
+function clearAllScriptTriggers() {
+    const triggers = ScriptApp.getProjectTriggers();
+    triggers.forEach(trigger => ScriptApp.deleteTrigger(trigger));
+}

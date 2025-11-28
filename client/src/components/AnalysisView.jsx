@@ -281,20 +281,34 @@ export default function AnalysisView() {
                                                 />
                                             </td>
                                             <td style={{ fontFamily: 'monospace', color: 'var(--accent-primary)' }}>
-                                                <button
-                                                    onClick={() => viewConversation(result.conversation_id)}
-                                                    style={{
-                                                        background: 'none',
-                                                        border: 'none',
-                                                        color: 'var(--accent-primary)',
-                                                        cursor: 'pointer',
-                                                        textDecoration: 'underline',
-                                                        fontFamily: 'monospace',
-                                                        fontSize: 'inherit'
-                                                    }}
-                                                >
-                                                    {result.conversation_id}
-                                                </button>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                    <button
+                                                        onClick={() => viewConversation(result.conversation_id)}
+                                                        style={{
+                                                            background: 'none',
+                                                            border: 'none',
+                                                            color: 'var(--accent-primary)',
+                                                            cursor: 'pointer',
+                                                            textDecoration: 'underline',
+                                                            fontFamily: 'monospace',
+                                                            fontSize: 'inherit'
+                                                        }}
+                                                    >
+                                                        {result.conversation_id}
+                                                    </button>
+                                                    {result.source === 'liveperson' && (
+                                                        <span style={{
+                                                            fontSize: '0.7rem',
+                                                            padding: '2px 6px',
+                                                            borderRadius: '4px',
+                                                            background: 'var(--accent-secondary)',
+                                                            color: 'white',
+                                                            fontWeight: 'bold'
+                                                        }}>
+                                                            LP
+                                                        </span>
+                                                    )}
+                                                </div>
                                             </td>
                                             <td>{result.conversation_date || 'N/A'}</td>
                                             <td>

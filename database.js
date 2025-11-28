@@ -33,10 +33,33 @@ function initDatabase() {
           conversation_date TEXT,
           uploaded_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           message_count INTEGER DEFAULT 0,
-          duration_minutes REAL DEFAULT 0
+          duration_minutes REAL DEFAULT 0,
+          source TEXT DEFAULT 'upload',
+          external_id TEXT,
+          fetched_at DATETIME,
+          lp_account_id TEXT,
+          raw_lp_response TEXT
         )
       `, (err) => {
         if (err) console.error('Error creating conversations table:', err);
+      });
+
+      // LivePerson accounts table
+      db.run(`
+        CREATE TABLE IF NOT EXISTS liveperson_accounts (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          account_name TEXT NOT NULL UNIQUE,
+          consumer_key TEXT NOT NULL,
+          consumer_secret TEXT NOT NULL,
+          token TEXT NOT NULL,
+          token_secret TEXT NOT NULL,
+          account_id TEXT NOT NULL,
+          is_active BOOLEAN DEFAULT 1,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `, (err) => {
+        if (err) console.error('Error creating liveperson_accounts table:', err);
       });
 
       // Analysis results table
@@ -460,4 +483,73 @@ async function getTopicClusters(dateRange = 'all', sentimentFilter = 'all') {
   return getAll(query);
 }
 
-export { initDatabase, runQuery, getOne, getAll, getHeatmapData, getTopicClusters };
+// =========================================
+// LivePerson Account Management
+// =========================================
+
+async function createLPAccount(accountData) {
+  const { account_name, consumer_key, consumer_secret, token, token_secret, account_id } = accountData;
+
+  const sql = `
+    INSERT INTO liveperson_accounts 
+    (account_name, consumer_key, consumer_secret, token, token_secret, account_id)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `;
+
+  return runQuery(sql, [account_name, consumer_key, consumer_secret, token, token_secret, account_id]);
+}
+
+async function getAllLPAccounts() {
+  return getAll('SELECT * FROM liveperson_accounts ORDER BY created_at DESC');
+}
+
+async function getActiveLPAccounts() {
+  return getAll('SELECT * FROM liveperson_accounts WHERE is_active = 1 ORDER BY created_at DESC');
+}
+
+async function getLPAccountById(id) {
+  return getOne('SELECT * FROM liveperson_accounts WHERE id = ?', [id]);
+}
+
+async function updateLPAccount(id, accountData) {
+  const { account_name, consumer_key, consumer_secret, token, token_secret, account_id, is_active } = accountData;
+
+  const sql = `
+    UPDATE liveperson_accounts 
+    SET account_name = ?, 
+        consumer_key = ?, 
+        consumer_secret = ?, 
+        token = ?, 
+        token_secret = ?, 
+        account_id = ?,
+        is_active = ?,
+        updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `;
+
+  return runQuery(sql, [account_name, consumer_key, consumer_secret, token, token_secret, account_id, is_active, id]);
+}
+
+async function deleteLPAccount(id) {
+  return runQuery('DELETE FROM liveperson_accounts WHERE id = ?', [id]);
+}
+
+async function toggleLPAccountStatus(id, is_active) {
+  return runQuery('UPDATE liveperson_accounts SET is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [is_active, id]);
+}
+
+export {
+  initDatabase,
+  runQuery,
+  getOne,
+  getAll,
+  getHeatmapData,
+  getTopicClusters,
+  createLPAccount,
+  getAllLPAccounts,
+  getActiveLPAccounts,
+  getLPAccountById,
+  updateLPAccount,
+  deleteLPAccount,
+  toggleLPAccountStatus
+};

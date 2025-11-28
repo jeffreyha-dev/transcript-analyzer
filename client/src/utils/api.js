@@ -240,6 +240,59 @@ class APIClient {
         if (sentimentFilter) params.append('sentimentFilter', sentimentFilter);
         return this.request(`/analytics/topics?${params.toString()}`);
     }
+
+    // LivePerson
+    async getLPAccounts() {
+        return this.request('/liveperson/accounts');
+    }
+
+    async getActiveLPAccounts() {
+        return this.request('/liveperson/accounts/active');
+    }
+
+    async getLPAccount(id) {
+        return this.request(`/liveperson/accounts/${id}`);
+    }
+
+    async createLPAccount(accountData) {
+        return this.request('/liveperson/accounts', {
+            method: 'POST',
+            body: JSON.stringify(accountData),
+        });
+    }
+
+    async updateLPAccount(id, accountData) {
+        return this.request(`/liveperson/accounts/${id}`, {
+            method: 'PUT',
+            body: JSON.stringify(accountData),
+        });
+    }
+
+    async deleteLPAccount(id) {
+        return this.request(`/liveperson/accounts/${id}`, {
+            method: 'DELETE',
+        });
+    }
+
+    async toggleLPAccount(id, is_active) {
+        return this.request(`/liveperson/accounts/${id}/toggle`, {
+            method: 'POST',
+            body: JSON.stringify({ is_active }),
+        });
+    }
+
+    async testLPConnection(id) {
+        return this.request(`/liveperson/accounts/${id}/test`, {
+            method: 'POST',
+        });
+    }
+
+    async fetchLPConversations(params) {
+        return this.request('/liveperson/fetch', {
+            method: 'POST',
+            body: JSON.stringify(params),
+        });
+    }
 }
 
 export default new APIClient();

@@ -6,6 +6,7 @@ import AIAnalysisView from './components/AIAnalysisView';
 import ExportView from './components/ExportView';
 import SettingsView from './components/SettingsView';
 import InteractiveExplorer from './components/InteractiveExplorer';
+import LivePersonFetch from './components/LivePersonFetch';
 import { AnalysisProvider } from './context/AnalysisContext';
 import './index.css';
 
@@ -78,6 +79,12 @@ function App() {
                   ⬇️ Export
                 </button>
                 <button
+                  className={`btn ${currentView === 'liveperson' ? 'btn-primary' : 'btn-secondary'}`}
+                  onClick={() => setCurrentView('liveperson')}
+                >
+                  🔗 LivePerson
+                </button>
+                <button
                   className={`btn ${currentView === 'settings' ? 'btn-primary' : 'btn-secondary'}`}
                   onClick={() => setCurrentView('settings')}
                 >
@@ -96,6 +103,7 @@ function App() {
           {currentView === 'ai-analysis' && <AIAnalysisView />}
           {currentView === 'explore' && <InteractiveExplorer />}
           {currentView === 'export' && <ExportView />}
+          {currentView === 'liveperson' && <LivePersonFetch />}
           {currentView === 'settings' && <SettingsView />}
         </main>
 
