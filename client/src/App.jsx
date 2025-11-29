@@ -90,7 +90,7 @@ function App() {
 
           {/* Main Content */}
           <main style={{ flex: 1 }}>
-            {currentView === 'dashboard' && <Dashboard />}
+            {currentView === 'dashboard' && <Dashboard onNavigate={setCurrentView} />}
             {currentView === 'import' && <ImportView />}
             {currentView === 'analysis' && <CombinedAnalysisView />}
             {currentView === 'explore' && <InteractiveExplorer />}

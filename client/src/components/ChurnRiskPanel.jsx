@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import api from '../utils/api';
 import { useAccount } from '../context/AccountContext';
 
-export default function ChurnRiskPanel() {
+export default function ChurnRiskPanel({ onNavigate }) {
     const [churnData, setChurnData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -268,7 +268,15 @@ export default function ChurnRiskPanel() {
                                 marginTop: '1rem',
                                 textAlign: 'center'
                             }}>
-                                <button className="btn btn-secondary btn-sm">
+                                <button
+                                    className="btn btn-secondary btn-sm"
+                                    onClick={() => {
+                                        // Set filter in session storage
+                                        sessionStorage.setItem('aiAnalysisFilter', JSON.stringify({ minChurnRisk: 70 }));
+                                        // Navigate to analysis view
+                                        if (onNavigate) onNavigate('analysis');
+                                    }}
+                                >
                                     View All {churnData.conversations.length} High-Risk Conversations →
                                 </button>
                             </div>

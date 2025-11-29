@@ -27,7 +27,6 @@ router.post('/run', async (req, res) => {
         SELECT c.* FROM conversations c
         LEFT JOIN analysis_results a ON c.conversation_id = a.conversation_id
         WHERE a.id IS NULL
-        LIMIT 500
       `);
         }
 

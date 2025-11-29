@@ -539,6 +539,8 @@ router.post('/calculate-churn', async (req, res) => {
             try {
                 const churnData = await calculateChurnRisk(conv.conversation_id);
 
+                console.log(`Calculated churn for ${conv.conversation_id}: Score=${churnData.score}, Level=${churnData.level}`);
+
                 await runQuery(`
                     UPDATE ai_analysis_results
                     SET churn_risk_score = ?,

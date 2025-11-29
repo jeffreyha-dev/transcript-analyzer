@@ -29,7 +29,24 @@ export default function LivePersonFetch() {
 
     useEffect(() => {
         loadAccounts();
+
+        // Load persisted fetch status from sessionStorage
+        const savedStatus = sessionStorage.getItem('lpFetchStatus');
+        if (savedStatus) {
+            try {
+                setFetchStatus(JSON.parse(savedStatus));
+            } catch (e) {
+                console.error('Failed to parse saved fetch status:', e);
+            }
+        }
     }, []);
+
+    // Persist fetch status to sessionStorage whenever it changes
+    useEffect(() => {
+        if (fetchStatus) {
+            sessionStorage.setItem('lpFetchStatus', JSON.stringify(fetchStatus));
+        }
+    }, [fetchStatus]);
 
     const loadAccounts = async () => {
         try {
@@ -603,14 +620,28 @@ export default function LivePersonFetch() {
 
                     {fetchStatus && !fetchStatus.loading && (
                         <div className={`mt-md p-md rounded-lg ${fetchStatus.success ? 'bg-green-500/10 border border-green-500' : 'bg-red-500/10 border border-red-500'}`}>
-                            <p className={fetchStatus.success ? 'text-green-500' : 'text-red-500'}>
-                                {fetchStatus.success ? '✓' : '✗'} {fetchStatus.message}
-                            </p>
-                            {fetchStatus.success && fetchStatus.imported > 0 && (
-                                <p className="text-sm text-secondary mt-xs">
-                                    Go to the Analysis tab to analyze them.
-                                </p>
-                            )}
+                            <div className="flex justify-between items-start">
+                                <div className="flex-1">
+                                    <p className={fetchStatus.success ? 'text-green-500' : 'text-red-500'}>
+                                        {fetchStatus.success ? '✓' : '✗'} {fetchStatus.message}
+                                    </p>
+                                    {fetchStatus.success && fetchStatus.imported > 0 && (
+                                        <p className="text-sm text-secondary mt-xs">
+                                            Go to the Analysis tab to analyze them.
+                                        </p>
+                                    )}
+                                </div>
+                                <button
+                                    onClick={() => {
+                                        setFetchStatus(null);
+                                        sessionStorage.removeItem('lpFetchStatus');
+                                    }}
+                                    className="btn btn-sm btn-secondary ml-md"
+                                    title="Dismiss"
+                                >
+                                    ✕
+                                </button>
+                            </div>
                         </div>
                     )}
                 </div>

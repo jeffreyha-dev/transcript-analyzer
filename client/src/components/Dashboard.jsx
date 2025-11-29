@@ -5,7 +5,7 @@ import SentimentTrendChart from './SentimentTrendChart';
 import ChurnRiskPanel from './ChurnRiskPanel';
 import { useAccount } from '../context/AccountContext';
 
-export default function Dashboard() {
+export default function Dashboard({ onNavigate }) {
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -77,21 +77,21 @@ export default function Dashboard() {
                 </div>
 
                 <div className="stat-card">
-                    <div className="stat-value" style={{ backgroundImage: getSentimentGradient(overview?.avgSentiment) }}>
-                        {overview?.avgSentiment || 0}
+                    <div className="stat-value" style={{ backgroundImage: getSentimentGradient(overview?.avgSentiment), WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>
+                        {overview?.avgSentiment ? Math.round(overview.avgSentiment) + '%' : 'N/A'}
                     </div>
                     <div className="stat-label">
-                        Avg Sentiment Score
-                        <span className="tooltip" data-tooltip="Average overall sentiment score (0-100) across all analyzed conversations" style={{ marginLeft: '4px', opacity: 0.7 }}>ℹ️</span>
+                        Avg Sentiment
+                        <span className="tooltip" data-tooltip="Average sentiment score (0-100) across all conversations" style={{ marginLeft: '4px', opacity: 0.7 }}>ℹ️</span>
                     </div>
                 </div>
 
                 <div className="stat-card">
-                    <div className="stat-value" style={{ backgroundImage: 'var(--gradient-success)' }}>
-                        {overview?.avgAgentScore || 0}
+                    <div className="stat-value" style={{ color: getSentimentColor(overview?.avgAgentScore >= 70 ? 'positive' : 'neutral') }}>
+                        {overview?.avgAgentScore ? Math.round(overview.avgAgentScore) : 'N/A'}
                     </div>
                     <div className="stat-label">
-                        Avg Agent Score
+                        Agent Score
                         <span className="tooltip" data-tooltip="Average agent performance score (0-100) based on empathy, resolution, and communication quality" style={{ marginLeft: '4px', opacity: 0.7 }}>ℹ️</span>
                     </div>
                 </div>
@@ -100,7 +100,7 @@ export default function Dashboard() {
             {/* Predictive Insights */}
             <div className="grid grid-2 gap-md mb-lg">
                 <SentimentTrendChart days={30} />
-                <ChurnRiskPanel />
+                <ChurnRiskPanel onNavigate={onNavigate} />
             </div>
 
             {/* Sentiment Distribution */}

@@ -3,7 +3,11 @@ import AnalysisView from './AnalysisView';
 import AIAnalysisView from './AIAnalysisView';
 
 export default function CombinedAnalysisView() {
-    const [activeTab, setActiveTab] = useState('traditional');
+    const [activeTab, setActiveTab] = useState(() => {
+        // Check if there's a pending AI analysis filter
+        const hasFilter = sessionStorage.getItem('aiAnalysisFilter');
+        return hasFilter ? 'ai' : 'traditional';
+    });
 
     return (
         <div className="container" style={{ paddingTop: '2rem', paddingBottom: '2rem' }}>

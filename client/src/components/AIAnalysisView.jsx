@@ -17,6 +17,20 @@ export default function AIAnalysisView() {
     const { selectedAccount } = useAccount();
 
     useEffect(() => {
+        // Check for filters passed via navigation
+        const storedFilter = sessionStorage.getItem('aiAnalysisFilter');
+        if (storedFilter) {
+            try {
+                const filter = JSON.parse(storedFilter);
+                setFilters(prev => ({ ...prev, ...filter }));
+                sessionStorage.removeItem('aiAnalysisFilter'); // Clear after use
+            } catch (e) {
+                console.error('Error parsing stored filter:', e);
+            }
+        }
+    }, []);
+
+    useEffect(() => {
         loadResults();
         loadMetricConfigs();
     }, [page, filters, selectedAccount]);
@@ -121,7 +135,7 @@ export default function AIAnalysisView() {
                         </p>
                     </div>
                     <div className="card-body">
-                        {/* Summary */}
+                        {/* Summary Section */}
                         <section style={{ marginBottom: '2rem' }}>
                             <h3 style={{ fontSize: '1.125rem', marginBottom: '0.75rem' }}>📝 Summary</h3>
                             <p style={{ color: 'var(--text-primary)', lineHeight: '1.6' }}>
@@ -137,47 +151,123 @@ export default function AIAnalysisView() {
                                 <span className="badge" style={{ background: getComplexityColor(selectedConversation.complexity) }}>
                                     {selectedConversation.complexity} complexity
                                 </span>
+                                {selectedConversation.category && (
+                                    <span className="badge badge-secondary">
+                                        📂 {selectedConversation.category}
+                                    </span>
+                                )}
                             </div>
                         </section>
 
                         {/* Key Points */}
-                        {selectedConversation.key_points && selectedConversation.key_points.length > 0 && (
-                            <section style={{ marginBottom: '2rem' }}>
-                                <h3 style={{ fontSize: '1.125rem', marginBottom: '0.75rem' }}>🔑 Key Points</h3>
-                                <ul style={{ paddingLeft: '1.5rem', color: 'var(--text-secondary)' }}>
-                                    {selectedConversation.key_points.map((point, i) => (
-                                        <li key={i} style={{ marginBottom: '0.5rem' }}>{point}</li>
-                                    ))}
-                                </ul>
-                            </section>
-                        )}
+                        {selectedConversation.key_points && (() => {
+                            try {
+                                const points = JSON.parse(selectedConversation.key_points);
+                                return points.length > 0 && (
+                                    <section style={{ marginBottom: '2rem' }}>
+                                        <h3 style={{ fontSize: '1.125rem', marginBottom: '0.75rem' }}>🔑 Key Points</h3>
+                                        <ul style={{ paddingLeft: '1.5rem', color: 'var(--text-secondary)' }}>
+                                            {points.map((point, i) => (
+                                                <li key={i} style={{ marginBottom: '0.5rem' }}>{point}</li>
+                                            ))}
+                                        </ul>
+                                    </section>
+                                );
+                            } catch (e) { return null; }
+                        })()}
 
-                        {/* Scores Grid */}
+                        {/* Detailed Sentiment Analysis */}
+                        <section style={{ marginBottom: '2rem' }}>
+                            <h3 style={{ fontSize: '1.125rem', marginBottom: '0.75rem' }}>❤️ Sentiment & Emotions</h3>
+
+                            {/* Emotions Grid */}
+                            {selectedConversation.emotions && (() => {
+                                try {
+                                    const emotions = JSON.parse(selectedConversation.emotions);
+                                    return (
+                                        <div className="grid grid-2 gap-md mb-md">
+                                            {/* Customer Emotions */}
+                                            <div className="card" style={{ background: 'var(--bg-secondary)', padding: '1rem' }}>
+                                                <h4 style={{ marginBottom: '0.5rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Customer Emotions</h4>
+                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                                                    {Object.entries(emotions.customer || {}).map(([emotion, score]) => (
+                                                        score > 0.1 && (
+                                                            <div key={emotion} style={{
+                                                                flex: '1 1 40%',
+                                                                display: 'flex',
+                                                                justifyContent: 'space-between',
+                                                                fontSize: '0.85rem'
+                                                            }}>
+                                                                <span style={{ textTransform: 'capitalize' }}>{emotion}</span>
+                                                                <span style={{ fontWeight: 'bold' }}>{Math.round(score * 100)}%</span>
+                                                            </div>
+                                                        )
+                                                    ))}
+                                                </div>
+                                            </div>
+                                            {/* Agent Emotions */}
+                                            <div className="card" style={{ background: 'var(--bg-secondary)', padding: '1rem' }}>
+                                                <h4 style={{ marginBottom: '0.5rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Agent Traits</h4>
+                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                                                    {Object.entries(emotions.agent || {}).map(([trait, score]) => (
+                                                        <div key={trait} style={{
+                                                            flex: '1 1 100%',
+                                                            display: 'flex',
+                                                            justifyContent: 'space-between',
+                                                            fontSize: '0.85rem'
+                                                        }}>
+                                                            <span style={{ textTransform: 'capitalize' }}>{trait}</span>
+                                                            <div style={{ width: '60%', background: 'var(--bg-primary)', height: '6px', borderRadius: '3px', alignSelf: 'center' }}>
+                                                                <div style={{ width: `${score * 100}%`, background: '#3b82f6', height: '100%', borderRadius: '3px' }}></div>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                } catch (e) { return null; }
+                            })()}
+                        </section>
+
+                        {/* Performance Scores Grid */}
                         <section style={{ marginBottom: '2rem' }}>
                             <h3 style={{ fontSize: '1.125rem', marginBottom: '0.75rem' }}>📊 Performance Scores</h3>
-                            <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
+                            <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '1rem' }}>
+                                <div className="metric-card">
+                                    <div className="metric-label">Overall Score</div>
+                                    <div className="metric-value" style={{ color: getScoreColor(selectedConversation.custom_data ? JSON.parse(selectedConversation.custom_data).agentPerformance?.overallScore : 0) }}>
+                                        {selectedConversation.custom_data ? JSON.parse(selectedConversation.custom_data).agentPerformance?.overallScore || 'N/A' : 'N/A'}
+                                    </div>
+                                </div>
                                 <div className="metric-card">
                                     <div className="metric-label">Empathy</div>
                                     <div className="metric-value" style={{ color: getScoreColor(selectedConversation.empathy_score) }}>
-                                        {selectedConversation.empathy_score}
+                                        {selectedConversation.empathy_score || 'N/A'}
                                     </div>
                                 </div>
                                 <div className="metric-card">
                                     <div className="metric-label">Communication</div>
                                     <div className="metric-value" style={{ color: getScoreColor(selectedConversation.communication_quality) }}>
-                                        {selectedConversation.communication_quality}
+                                        {selectedConversation.communication_quality || 'N/A'}
                                     </div>
                                 </div>
                                 <div className="metric-card">
                                     <div className="metric-label">Problem Solving</div>
                                     <div className="metric-value" style={{ color: getScoreColor(selectedConversation.problem_solving_score) }}>
-                                        {selectedConversation.problem_solving_score}
+                                        {selectedConversation.problem_solving_score || 'N/A'}
                                     </div>
                                 </div>
                                 <div className="metric-card">
-                                    <div className="metric-label">Churn Risk</div>
-                                    <div className="metric-value" style={{ color: getScoreColor(100 - selectedConversation.churn_risk_score) }}>
-                                        {selectedConversation.churn_risk_score}
+                                    <div className="metric-label">Compliance</div>
+                                    <div className="metric-value" style={{ color: getScoreColor(selectedConversation.compliance_score) }}>
+                                        {selectedConversation.compliance_score || 'N/A'}
+                                    </div>
+                                </div>
+                                <div className="metric-card">
+                                    <div className="metric-label">Personalization</div>
+                                    <div className="metric-value" style={{ color: getScoreColor(selectedConversation.personalization_score) }}>
+                                        {selectedConversation.personalization_score || 'N/A'}
                                     </div>
                                 </div>
                             </div>
@@ -185,121 +275,182 @@ export default function AIAnalysisView() {
 
                         {/* Agent Strengths & Improvements */}
                         <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem', marginBottom: '2rem' }}>
-                            {selectedConversation.agent_strengths && selectedConversation.agent_strengths.length > 0 && (
-                                <div>
-                                    <h3 style={{ fontSize: '1.125rem', marginBottom: '0.75rem', color: '#10b981' }}>✨ Strengths</h3>
-                                    <ul style={{ paddingLeft: '1.5rem', color: 'var(--text-secondary)' }}>
-                                        {selectedConversation.agent_strengths.map((strength, i) => (
-                                            <li key={i} style={{ marginBottom: '0.5rem' }}>{strength}</li>
-                                        ))}
-                                    </ul>
-                                </div>
-                            )}
-                            {selectedConversation.agent_improvements && selectedConversation.agent_improvements.length > 0 && (
-                                <div>
-                                    <h3 style={{ fontSize: '1.125rem', marginBottom: '0.75rem', color: '#f59e0b' }}>💡 Improvements</h3>
-                                    <ul style={{ paddingLeft: '1.5rem', color: 'var(--text-secondary)' }}>
-                                        {selectedConversation.agent_improvements.map((improvement, i) => (
-                                            <li key={i} style={{ marginBottom: '0.5rem' }}>{improvement}</li>
-                                        ))}
-                                    </ul>
-                                </div>
-                            )}
+                            {selectedConversation.agent_strengths && (() => {
+                                try {
+                                    const strengths = JSON.parse(selectedConversation.agent_strengths);
+                                    return strengths.length > 0 && (
+                                        <div>
+                                            <h3 style={{ fontSize: '1.125rem', marginBottom: '0.75rem', color: '#10b981' }}>✨ Strengths</h3>
+                                            <ul style={{ paddingLeft: '1.5rem', color: 'var(--text-secondary)' }}>
+                                                {strengths.map((strength, i) => (
+                                                    <li key={i} style={{ marginBottom: '0.5rem' }}>{strength}</li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    );
+                                } catch (e) { return null; }
+                            })()}
+
+                            {selectedConversation.agent_improvements && (() => {
+                                try {
+                                    const improvements = JSON.parse(selectedConversation.agent_improvements);
+                                    return improvements.length > 0 && (
+                                        <div>
+                                            <h3 style={{ fontSize: '1.125rem', marginBottom: '0.75rem', color: '#f59e0b' }}>💡 Improvements</h3>
+                                            <ul style={{ paddingLeft: '1.5rem', color: 'var(--text-secondary)' }}>
+                                                {improvements.map((improvement, i) => (
+                                                    <li key={i} style={{ marginBottom: '0.5rem' }}>{improvement}</li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    );
+                                } catch (e) { return null; }
+                            })()}
                         </div>
 
-                        {/* Risk Flags */}
-                        {selectedConversation.risk_flags && selectedConversation.risk_flags.length > 0 && (
-                            <section style={{ marginBottom: '2rem' }}>
-                                <h3 style={{ fontSize: '1.125rem', marginBottom: '0.75rem', color: '#ef4444' }}>⚠️ Risk Flags</h3>
-                                {selectedConversation.risk_flags.map((risk, i) => (
-                                    <div key={i} className="alert alert-warning" style={{ marginBottom: '0.5rem' }}>
-                                        <strong>{risk.type}:</strong> {risk.description}
+                        {/* QA & Compliance */}
+                        <section style={{ marginBottom: '2rem' }}>
+                            <h3 style={{ fontSize: '1.125rem', marginBottom: '0.75rem' }}>🛡️ QA & Compliance</h3>
+                            <div style={{ display: 'flex', gap: '2rem', marginBottom: '1rem' }}>
+                                <div>
+                                    <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>Script Adherence</div>
+                                    <div style={{ fontSize: '1.25rem', fontWeight: 'bold', color: getScoreColor(selectedConversation.script_adherence_score) }}>
+                                        {selectedConversation.script_adherence_score ? selectedConversation.script_adherence_score + '%' : 'N/A'}
                                     </div>
-                                ))}
-                            </section>
-                        )}
+                                </div>
+                            </div>
+
+                            {/* Risk Flags */}
+                            {selectedConversation.risk_flags && (() => {
+                                try {
+                                    const flags = JSON.parse(selectedConversation.risk_flags);
+                                    return flags.length > 0 && (
+                                        <div style={{ marginBottom: '1rem' }}>
+                                            <h4 style={{ fontSize: '0.9rem', color: '#ef4444', marginBottom: '0.5rem' }}>Risk Flags</h4>
+                                            {flags.map((risk, i) => (
+                                                <div key={i} className="alert alert-warning" style={{ marginBottom: '0.5rem', padding: '0.75rem' }}>
+                                                    <strong>{risk.type}:</strong> {risk.description}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    );
+                                } catch (e) { return null; }
+                            })()}
+
+                            {/* Policy Violations */}
+                            {selectedConversation.policy_violations && (() => {
+                                try {
+                                    const violations = JSON.parse(selectedConversation.policy_violations);
+                                    return violations.length > 0 && (
+                                        <div>
+                                            <h4 style={{ fontSize: '0.9rem', color: '#ef4444', marginBottom: '0.5rem' }}>Policy Violations</h4>
+                                            {violations.map((v, i) => (
+                                                <div key={i} className="alert alert-danger" style={{ marginBottom: '0.5rem', padding: '0.75rem' }}>
+                                                    <strong>{v.policy}:</strong> {v.description}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    );
+                                } catch (e) { return null; }
+                            })()}
+                        </section>
 
                         {/* Customer Journey */}
                         <section>
                             <h3 style={{ fontSize: '1.125rem', marginBottom: '0.75rem' }}>🎯 Customer Journey</h3>
-                            <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap' }}>
-                                <div>
-                                    <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>Personality</div>
-                                    <div style={{ fontSize: '1.125rem', fontWeight: '600', textTransform: 'capitalize' }}>
-                                        {selectedConversation.customer_personality}
+                            <div className="grid grid-3 gap-md mb-md">
+                                <div className="card" style={{ background: 'var(--bg-secondary)', padding: '1rem' }}>
+                                    <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>Churn Risk</div>
+                                    <div style={{ fontSize: '1.25rem', fontWeight: 'bold', color: getScoreColor(100 - selectedConversation.churn_risk_score) }}>
+                                        {selectedConversation.churn_risk_score}%
                                     </div>
                                 </div>
-                                <div>
+                                <div className="card" style={{ background: 'var(--bg-secondary)', padding: '1rem' }}>
+                                    <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>Personality</div>
+                                    <div style={{ fontSize: '1.125rem', fontWeight: '600', textTransform: 'capitalize' }}>
+                                        {selectedConversation.customer_personality || 'Unknown'}
+                                    </div>
+                                </div>
+                                <div className="card" style={{ background: 'var(--bg-secondary)', padding: '1rem' }}>
                                     <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>Lifetime Value</div>
                                     <div style={{ fontSize: '1.125rem', fontWeight: '600', textTransform: 'capitalize' }}>
-                                        {selectedConversation.lifetime_value_indicator}
+                                        {selectedConversation.lifetime_value_indicator || 'Unknown'}
                                     </div>
                                 </div>
                             </div>
+
+                            {/* Intervention Suggestions */}
+                            {selectedConversation.intervention_suggestions && (() => {
+                                try {
+                                    const suggestions = JSON.parse(selectedConversation.intervention_suggestions);
+                                    return suggestions.length > 0 && (
+                                        <div className="alert alert-info">
+                                            <strong>💡 Recommended Actions:</strong>
+                                            <ul style={{ margin: '0.5rem 0 0 1.5rem' }}>
+                                                {suggestions.map((s, i) => <li key={i}>{s}</li>)}
+                                            </ul>
+                                        </div>
+                                    );
+                                } catch (e) { return null; }
+                            })()}
                         </section>
 
                         {/* Custom Insights (Dynamic Fields) */}
                         {selectedConversation.custom_data && (() => {
-                            const customData = JSON.parse(selectedConversation.custom_data);
+                            let customData = {};
+                            try {
+                                customData = JSON.parse(selectedConversation.custom_data);
+                            } catch (e) {
+                                return null;
+                            }
+
+                            // Filter out fields we already displayed
+                            const displayedFields = [
+                                'summary', 'sentiment', 'intent', 'agentPerformance', 'qa', 'customerJourney',
+                                'conversation_id', 'transcript', 'provider_used', 'tokens_used', 'cost', 'processing_time_ms'
+                            ];
+
+                            const filteredData = Object.entries(customData).reduce((acc, [key, value]) => {
+                                if (!displayedFields.includes(key)) {
+                                    acc[key] = value;
+                                }
+                                return acc;
+                            }, {});
+
+                            if (Object.keys(filteredData).length === 0) return null;
 
                             const renderValue = (value, key = '') => {
-                                // Handle null/undefined
                                 if (value === null || value === undefined) {
                                     return <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>N/A</span>;
                                 }
 
-                                // Handle booleans
                                 if (typeof value === 'boolean') {
                                     return <span className={`badge ${value ? 'badge-success' : 'badge-warning'}`}>
                                         {value ? '✓' : '✗'}
                                     </span>;
                                 }
 
-                                // Handle numbers (scores)
                                 if (typeof value === 'number') {
-                                    // If it looks like a score (0-100 or 0-1)
                                     if ((value >= 0 && value <= 100) || (value >= 0 && value <= 1)) {
                                         const score = value <= 1 ? value * 100 : value;
                                         return (
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                                                <div style={{
-                                                    flex: 1,
-                                                    height: '8px',
-                                                    background: 'var(--bg-primary)',
-                                                    borderRadius: '4px',
-                                                    overflow: 'hidden'
-                                                }}>
-                                                    <div style={{
-                                                        width: `${score}%`,
-                                                        height: '100%',
-                                                        background: getScoreColor(value, key),
-                                                        transition: 'width 0.3s ease'
-                                                    }}></div>
+                                                <div style={{ flex: 1, height: '8px', background: 'var(--bg-primary)', borderRadius: '4px', overflow: 'hidden' }}>
+                                                    <div style={{ width: `${score}%`, height: '100%', background: getScoreColor(value, key), transition: 'width 0.3s ease' }}></div>
                                                 </div>
-                                                <span style={{
-                                                    fontWeight: '600',
-                                                    color: getScoreColor(value, key),
-                                                    minWidth: '3rem',
-                                                    textAlign: 'right'
-                                                }}>
-                                                    {Math.round(score)}
-                                                </span>
+                                                <span style={{ fontWeight: '600', color: getScoreColor(value, key), minWidth: '3rem', textAlign: 'right' }}>{Math.round(score)}</span>
                                             </div>
                                         );
                                     }
                                     return <span style={{ fontWeight: '500' }}>{value}</span>;
                                 }
 
-                                // Handle strings
                                 if (typeof value === 'string') {
                                     return <span style={{ color: 'var(--text-primary)' }}>{value}</span>;
                                 }
 
-                                // Handle arrays
                                 if (Array.isArray(value)) {
-                                    if (value.length === 0) {
-                                        return <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>None</span>;
-                                    }
+                                    if (value.length === 0) return <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>None</span>;
                                     return (
                                         <ul style={{ margin: '0.5rem 0', paddingLeft: '1.5rem' }}>
                                             {value.map((item, i) => (
@@ -311,23 +462,12 @@ export default function AIAnalysisView() {
                                     );
                                 }
 
-                                // Handle objects
                                 if (typeof value === 'object') {
                                     return (
-                                        <div style={{
-                                            marginLeft: '1rem',
-                                            paddingLeft: '1rem',
-                                            borderLeft: '2px solid var(--border-color)',
-                                            marginTop: '0.5rem'
-                                        }}>
+                                        <div style={{ marginLeft: '1rem', paddingLeft: '1rem', borderLeft: '2px solid var(--border-color)', marginTop: '0.5rem' }}>
                                             {Object.entries(value).map(([k, v]) => (
                                                 <div key={k} style={{ marginBottom: '0.75rem' }}>
-                                                    <div style={{
-                                                        fontSize: '0.875rem',
-                                                        color: 'var(--text-secondary)',
-                                                        marginBottom: '0.25rem',
-                                                        textTransform: 'capitalize'
-                                                    }}>
+                                                    <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '0.25rem', textTransform: 'capitalize' }}>
                                                         {k.replace(/_/g, ' ')}
                                                     </div>
                                                     {renderValue(v, k)}
@@ -356,25 +496,11 @@ export default function AIAnalysisView() {
                                 <section style={{ marginTop: '2rem' }}>
                                     <h3 style={{ fontSize: '1.125rem', marginBottom: '0.75rem' }}>✨ Custom Insights</h3>
                                     <div style={{ display: 'grid', gap: '1rem' }}>
-                                        {Object.entries(customData).map(([key, value]) => (
-                                            <div key={key} style={{
-                                                background: 'var(--bg-tertiary)',
-                                                border: '1px solid var(--border-color)',
-                                                borderRadius: 'var(--radius-md)',
-                                                padding: '1.25rem'
-                                            }}>
-                                                <h4 style={{
-                                                    fontSize: '1rem',
-                                                    marginBottom: '1rem',
-                                                    color: 'var(--text-primary)',
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    gap: '0.5rem'
-                                                }}>
+                                        {Object.entries(filteredData).map(([key, value]) => (
+                                            <div key={key} style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', padding: '1.25rem' }}>
+                                                <h4 style={{ fontSize: '1rem', marginBottom: '1rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                                     <span>{getFieldIcon(key)}</span>
-                                                    <span style={{ textTransform: 'capitalize' }}>
-                                                        {key.replace(/_/g, ' ')}
-                                                    </span>
+                                                    <span style={{ textTransform: 'capitalize' }}>{key.replace(/_/g, ' ')}</span>
                                                 </h4>
                                                 {renderValue(value, key)}
                                             </div>
@@ -454,6 +580,7 @@ export default function AIAnalysisView() {
                     </div>
                 </div>
             </div>
+
         );
     }
 
