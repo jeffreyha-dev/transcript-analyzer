@@ -115,7 +115,7 @@ router.post('/accounts/:id/test', async (req, res) => {
 // Fetch conversations from LivePerson
 router.post('/fetch', async (req, res) => {
     try {
-        const { accountId, startDate, endDate, limit } = req.body;
+        const { accountId, startDate, endDate, limit, offset, status, skills } = req.body;
 
         if (!accountId) {
             return res.status(400).json({ error: 'Account ID is required' });
@@ -133,7 +133,10 @@ router.post('/fetch', async (req, res) => {
         const result = await fetchLivePersonConversations(account, {
             startDate,
             endDate,
-            limit: limit || 100
+            limit: limit || 100,
+            offset: offset || 0,
+            status,
+            skills
         });
 
         res.json(result);

@@ -11,7 +11,8 @@ export default function LivePersonFetch() {
         datePreset: '7d', // Default to last 7 days
         startDate: '',
         endDate: '',
-        status: 'CLOSE' // OPEN, CLOSE, or both
+        status: 'CLOSE', // OPEN, CLOSE, or both
+        skills: '' // Comma-separated skill IDs
     });
     const [fetchStatus, setFetchStatus] = useState(null);
     const [formData, setFormData] = useState({
@@ -193,7 +194,10 @@ export default function LivePersonFetch() {
                     endDate: dateRange.endDate,
                     limit: BATCH_SIZE,
                     offset: offset,
-                    status: fetchParams.status
+                    status: fetchParams.status,
+                    skills: fetchParams.skills
+                        ? fetchParams.skills.split(',').map(s => s.trim()).filter(Boolean)
+                        : undefined
                 });
 
                 console.log(`Batch ${batchesFetched + 1}: imported ${result.imported}, API returned ${result.apiReturned || result.imported}`);
@@ -523,6 +527,17 @@ export default function LivePersonFetch() {
                                 <option value="OPEN">Open Conversations</option>
                                 <option value="">All Conversations (Open + Closed)</option>
                             </select>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium mb-xs">Skills (Optional)</label>
+                            <input
+                                type="text"
+                                className="input w-full"
+                                value={fetchParams.skills}
+                                onChange={(e) => setFetchParams({ ...fetchParams, skills: e.target.value })}
+                                placeholder="e.g., 123, 456, 789"
+                            />
+                            <p className="text-xs text-secondary mt-xs">Comma-separated skill IDs to filter conversations</p>
                         </div>
                         <div className="col-span-2">
                             <label className="block text-sm font-medium mb-xs">Date Range</label>

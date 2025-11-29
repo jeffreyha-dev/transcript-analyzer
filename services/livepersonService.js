@@ -153,7 +153,7 @@ export async function testLivePersonConnection(account) {
  */
 export async function fetchLivePersonConversations(account, options = {}) {
     try {
-        const { startDate, endDate, limit = 100, offset = 0, status } = options;
+        const { startDate, endDate, limit = 100, offset = 0, status, skills } = options;
 
         console.log('Fetching LP conversations with options:', options);
 
@@ -177,6 +177,11 @@ export async function fetchLivePersonConversations(account, options = {}) {
         // Add status filter if specified
         if (status) {
             payload.status = [status]; // LivePerson expects an array of statuses
+        }
+
+        // Add skills filter if specified
+        if (skills && skills.length > 0) {
+            payload.skill = skills; // LivePerson expects an array of skill IDs
         }
 
         console.log('Request payload:', JSON.stringify(payload, null, 2));

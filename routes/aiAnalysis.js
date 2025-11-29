@@ -133,6 +133,7 @@ router.get('/results', async (req, res) => {
         const intent = req.query.intent;
         const complexity = req.query.complexity;
         const minChurnRisk = req.query.min_churn_risk;
+        const accountId = req.query.account_id; // Filter by LivePerson account
 
         let whereClause = '';
         const params = [];
@@ -149,12 +150,17 @@ router.get('/results', async (req, res) => {
             whereClause += ' AND a.churn_risk_score >= ?';
             params.push(parseFloat(minChurnRisk));
         }
+        if (accountId) {
+            whereClause += ' AND c.lp_account_id = ?';
+            params.push(accountId);
+        }
 
         const query = `
             SELECT 
                 a.*,
                 c.conversation_date,
-                c.uploaded_at
+                c.uploaded_at,
+                c.lp_account_id
             FROM ai_analysis_results a
             JOIN conversations c ON a.conversation_id = c.conversation_id
             WHERE 1=1 ${whereClause}
@@ -165,6 +171,7 @@ router.get('/results', async (req, res) => {
         const countQuery = `
             SELECT COUNT(*) as total
             FROM ai_analysis_results a
+            JOIN conversations c ON a.conversation_id = c.conversation_id
             WHERE 1=1 ${whereClause}
         `;
 

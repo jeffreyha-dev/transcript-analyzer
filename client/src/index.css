@@ -656,3 +656,53 @@ tr.selected-row {
 .grid-cols-1 {
   grid-template-columns: repeat(1, minmax(0, 1fr));
 }
+
+/* Tooltip Component */
+.tooltip {
+  position: relative;
+  display: inline-block;
+  cursor: help;
+}
+
+.tooltip::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0.5rem 0.75rem;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+  white-space: normal;
+  max-width: 250px;
+  text-align: center;
+  line-height: 1.4;
+  opacity: 0;
+  visibility: hidden;
+  transition: all var(--transition-fast);
+  z-index: 100;
+  box-shadow: var(--shadow-md);
+  pointer-events: none;
+  margin-bottom: 0.5rem;
+}
+
+.tooltip:hover::after {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(-50%) translateY(-4px);
+}
+
+/* Tooltips in table headers should appear below to avoid clipping */
+th .tooltip::after {
+  bottom: auto;
+  top: 100%;
+  margin-bottom: 0;
+  margin-top: 0.5rem;
+}
+
+th .tooltip:hover::after {
+  transform: translateX(-50%) translateY(4px);
+}

@@ -109,20 +109,28 @@ router.get('/results', async (req, res) => {
         const limit = parseInt(req.query.limit) || 50;
         const offset = (page - 1) * limit;
         const sentiment = req.query.sentiment; // Filter by sentiment label
+        const accountId = req.query.account_id; // Filter by LivePerson account
 
         let query = `
       SELECT 
         a.*,
         c.conversation_date,
-        c.uploaded_at
+        c.uploaded_at,
+        c.lp_account_id
       FROM analysis_results a
       JOIN conversations c ON a.conversation_id = c.conversation_id
+      WHERE 1=1
     `;
         const params = [];
 
         if (sentiment) {
-            query += ' WHERE a.sentiment_label = ?';
+            query += ' AND a.sentiment_label = ?';
             params.push(sentiment);
+        }
+
+        if (accountId) {
+            query += ' AND c.lp_account_id = ?';
+            params.push(accountId);
         }
 
         query += ' ORDER BY a.analyzed_at DESC LIMIT ? OFFSET ?';
@@ -139,10 +147,19 @@ router.get('/results', async (req, res) => {
             }
         });
 
-        const totalQuery = sentiment
-            ? 'SELECT COUNT(*) as total FROM analysis_results WHERE sentiment_label = ?'
-            : 'SELECT COUNT(*) as total FROM analysis_results';
-        const totalParams = sentiment ? [sentiment] : [];
+        let totalQuery = 'SELECT COUNT(*) as total FROM analysis_results a JOIN conversations c ON a.conversation_id = c.conversation_id WHERE 1=1';
+        const totalParams = [];
+
+        if (sentiment) {
+            totalQuery += ' AND a.sentiment_label = ?';
+            totalParams.push(sentiment);
+        }
+
+        if (accountId) {
+            totalQuery += ' AND c.lp_account_id = ?';
+            totalParams.push(accountId);
+        }
+
         const totalResult = await getOne(totalQuery, totalParams);
 
         res.json({
@@ -167,18 +184,23 @@ router.get('/results', async (req, res) => {
  */
 router.get('/dashboard', async (req, res) => {
     try {
+        const accountId = req.query.account_id; // Filter by LivePerson account
+
+        // Build WHERE clause for account filtering
+        const whereClause = accountId ? 'WHERE c.lp_account_id = ?' : '';
+        const params = accountId ? [accountId] : [];
+
         // Total conversations
-        const totalConv = await getOne('SELECT COUNT(*) as count FROM conversations');
+        const totalConv = await getOne(`SELECT COUNT(*) as count FROM conversations c ${whereClause}`, params);
 
         // Total analyzed
-        const totalAnalyzed = await getOne('SELECT COUNT(*) as count FROM analysis_results');
+        const totalAnalyzed = await getOne(`
+            SELECT COUNT(*) as count 
+            FROM analysis_results a
+            JOIN conversations c ON a.conversation_id = c.conversation_id
+            ${whereClause}
+        `, params);
 
-        // Average sentiment
-        const avgSentiment = await getOne(
-            'SELECT AVG(overall_sentiment) as avg FROM analysis_results'
-        );
-
-        // Sentiment distribution
         // Get aggregate statistics
         const stats = await getOne(`
       SELECT 
@@ -186,15 +208,19 @@ router.get('/dashboard', async (req, res) => {
         AVG(overall_sentiment) as avg_sentiment,
         AVG(customer_satisfaction_score) as avg_csat,
         AVG(agent_performance_score) as avg_agent_score
-      FROM analysis_results
-    `);
+      FROM analysis_results a
+      JOIN conversations c ON a.conversation_id = c.conversation_id
+      ${whereClause}
+    `, params);
 
         // Get sentiment distribution
         const sentimentDist = await getAll(`
       SELECT sentiment_label, COUNT(*) as count
-      FROM analysis_results
+      FROM analysis_results a
+      JOIN conversations c ON a.conversation_id = c.conversation_id
+      ${whereClause}
       GROUP BY sentiment_label
-    `);
+    `, params);
 
         // Recent conversations
         const recentConversations = await getAll(`
@@ -205,9 +231,10 @@ router.get('/dashboard', async (req, res) => {
         a.customer_satisfaction_score
       FROM conversations c
       LEFT JOIN analysis_results a ON c.conversation_id = a.conversation_id
+      ${whereClause}
       ORDER BY c.conversation_date DESC
       LIMIT 5
-    `);
+    `, params);
 
         res.json({
             overview: {

@@ -1,20 +1,22 @@
 import { useState, useEffect } from 'react';
 import api from '../utils/api';
 import AIInsightsPanel from './AIInsightsPanel';
+import { useAccount } from '../context/AccountContext';
 
 export default function Dashboard() {
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+    const { selectedAccount } = useAccount();
 
     useEffect(() => {
         loadDashboard();
-    }, []);
+    }, [selectedAccount]);
 
     const loadDashboard = async () => {
         try {
             setLoading(true);
-            const response = await api.getDashboardData();
+            const response = await api.getDashboardData(selectedAccount);
             setData(response);
         } catch (err) {
             setError(err.message);
@@ -76,14 +78,20 @@ export default function Dashboard() {
                     <div className="stat-value" style={{ backgroundImage: getSentimentGradient(overview?.avgSentiment) }}>
                         {overview?.avgSentiment || 0}
                     </div>
-                    <div className="stat-label">Avg Sentiment Score</div>
+                    <div className="stat-label">
+                        Avg Sentiment Score
+                        <span className="tooltip" data-tooltip="Average overall sentiment score (0-100) across all analyzed conversations" style={{ marginLeft: '4px', opacity: 0.7 }}>ℹ️</span>
+                    </div>
                 </div>
 
                 <div className="stat-card">
                     <div className="stat-value" style={{ backgroundImage: 'var(--gradient-success)' }}>
                         {overview?.avgAgentScore || 0}
                     </div>
-                    <div className="stat-label">Avg Agent Score</div>
+                    <div className="stat-label">
+                        Avg Agent Score
+                        <span className="tooltip" data-tooltip="Average agent performance score (0-100) based on empathy, resolution, and communication quality" style={{ marginLeft: '4px', opacity: 0.7 }}>ℹ️</span>
+                    </div>
                 </div>
             </div>
 

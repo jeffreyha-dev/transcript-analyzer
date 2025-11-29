@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import api from '../utils/api';
 import { useAnalysis } from '../context/AnalysisContext';
+import { useAccount } from '../context/AccountContext';
 
 export default function AnalysisView() {
     const [results, setResults] = useState([]);
@@ -14,16 +15,17 @@ export default function AnalysisView() {
     const [selectedIds, setSelectedIds] = useState(new Set());
 
     const { isAnalyzing, startAnalysis } = useAnalysis();
+    const { selectedAccount } = useAccount();
 
     useEffect(() => {
         loadResults();
-    }, [page, sentimentFilter]);
+    }, [page, sentimentFilter, selectedAccount]);
 
     const loadResults = async () => {
         try {
             setLoading(true);
             setError(null);
-            const response = await api.getAnalysisResults(page, 50, sentimentFilter || null);
+            const response = await api.getAnalysisResults(page, 50, sentimentFilter || null, selectedAccount);
             setResults(response.results || []);
             setPagination(response.pagination);
         } catch (err) {
@@ -177,7 +179,7 @@ export default function AnalysisView() {
         <div className="container" style={{ paddingTop: '2rem', paddingBottom: '2rem' }}>
             <div className="flex justify-between items-center mb-lg">
                 <div>
-                    <h1>Analysis Results</h1>
+                    <h1>Analysis Results {pagination?.total ? <span style={{ fontSize: '1rem', color: 'var(--text-secondary)', fontWeight: 'normal' }}>({pagination.total} total)</span> : ''}</h1>
                     <p style={{ color: 'var(--text-secondary)', marginTop: '0.5rem' }}>
                         Detailed analysis of conversation transcripts
                     </p>
@@ -263,8 +265,14 @@ export default function AnalysisView() {
                                         <th>Conversation ID</th>
                                         <th>Date</th>
                                         <th>Sentiment</th>
-                                        <th>Score</th>
-                                        <th>Agent Score</th>
+                                        <th>
+                                            Score
+                                            <span className="tooltip" data-tooltip="Overall sentiment score (0-100)" style={{ marginLeft: '4px', opacity: 0.7, fontSize: '0.8em' }}>ℹ️</span>
+                                        </th>
+                                        <th>
+                                            Agent Score
+                                            <span className="tooltip" data-tooltip="Agent performance score (0-100)" style={{ marginLeft: '4px', opacity: 0.7, fontSize: '0.8em' }}>ℹ️</span>
+                                        </th>
                                         <th>Customer Score</th>
                                         <th>Avg Msg Length</th>
                                     </tr>

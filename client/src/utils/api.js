@@ -74,14 +74,17 @@ class APIClient {
         });
     }
 
-    async getAnalysisResults(page = 1, limit = 50, sentiment = null) {
+    async getAnalysisResults(page = 1, limit = 50, sentiment = null, accountId = null) {
         let url = `/analysis/results?page=${page}&limit=${limit}`;
         if (sentiment) url += `&sentiment=${sentiment}`;
+        if (accountId) url += `&account_id=${accountId}`;
         return this.request(url);
     }
 
-    async getDashboardData() {
-        return this.request('/analysis/dashboard');
+    async getDashboardData(accountId = null) {
+        let url = '/analysis/dashboard';
+        if (accountId) url += `?account_id=${accountId}`;
+        return this.request(url);
     }
 
     async exportResults(format = 'json') {
@@ -110,11 +113,12 @@ class APIClient {
         });
     }
 
-    async getAIResults(page = 1, limit = 50, filters = {}) {
+    async getAIResults(page = 1, limit = 50, filters = {}, accountId = null) {
         let url = `/ai-analysis/results?page=${page}&limit=${limit}`;
         if (filters.intent) url += `&intent=${filters.intent}`;
         if (filters.complexity) url += `&complexity=${filters.complexity}`;
         if (filters.minChurnRisk) url += `&min_churn_risk=${filters.minChurnRisk}`;
+        if (accountId) url += `&account_id=${accountId}`;
         return this.request(url);
     }
 

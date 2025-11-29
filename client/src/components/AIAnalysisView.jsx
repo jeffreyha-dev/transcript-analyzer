@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import api from '../utils/api';
 import { useAnalysis } from '../context/AnalysisContext';
+import { useAccount } from '../context/AccountContext';
 
 export default function AIAnalysisView() {
     const [results, setResults] = useState([]);
@@ -13,11 +14,12 @@ export default function AIAnalysisView() {
     const [metricConfigs, setMetricConfigs] = useState([]);
 
     const { isAnalyzing, progress, startAnalysis, lastAnalysisResult } = useAnalysis();
+    const { selectedAccount } = useAccount();
 
     useEffect(() => {
         loadResults();
         loadMetricConfigs();
-    }, [page, filters]);
+    }, [page, filters, selectedAccount]);
 
     // Reload results when analysis completes
     useEffect(() => {
@@ -39,7 +41,7 @@ export default function AIAnalysisView() {
         try {
             setLoading(true);
             setError(null);
-            const response = await api.getAIResults(page, 50, filters);
+            const response = await api.getAIResults(page, 50, filters, selectedAccount);
             setResults(response.results || []);
             setPagination(response.pagination);
         } catch (err) {
@@ -461,7 +463,7 @@ export default function AIAnalysisView() {
                 <div className="card-header">
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
                         <div>
-                            <h2>🤖 AI Analysis Results</h2>
+                            <h2>🤖 AI Analysis Results {pagination?.total ? <span style={{ fontSize: '1rem', color: 'var(--text-secondary)', fontWeight: 'normal' }}>({pagination.total} total)</span> : ''}</h2>
                             <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginTop: '0.5rem' }}>
                                 Advanced AI-powered conversation insights
                             </p>
