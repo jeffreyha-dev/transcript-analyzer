@@ -137,6 +137,27 @@ class APIClient {
     async getAIStats() {
         return this.request('/ai-analysis/stats');
     }
+
+    async getTrends(days = 30, accountId = null) {
+        let url = `/ai-analysis/trends?days=${days}`;
+        if (accountId) url += `&account_id=${accountId}`;
+        return this.request(url);
+    }
+
+    async getChurnRisks(accountId = null, riskLevel = null) {
+        let url = '/ai-analysis/churn-risks?';
+        if (accountId) url += `account_id=${accountId}&`;
+        if (riskLevel) url += `risk_level=${riskLevel}&`;
+        return this.request(url);
+    }
+
+    async calculateChurn(conversationIds = null) {
+        return this.request('/ai-analysis/calculate-churn', {
+            method: 'POST',
+            body: JSON.stringify({ conversation_ids: conversationIds })
+        });
+    }
+
     async getSettings() {
         return this.request('/settings');
     }

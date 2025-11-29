@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import api from '../utils/api';
 import AIInsightsPanel from './AIInsightsPanel';
+import SentimentTrendChart from './SentimentTrendChart';
+import ChurnRiskPanel from './ChurnRiskPanel';
 import { useAccount } from '../context/AccountContext';
 
 export default function Dashboard() {
@@ -93,6 +95,12 @@ export default function Dashboard() {
                         <span className="tooltip" data-tooltip="Average agent performance score (0-100) based on empathy, resolution, and communication quality" style={{ marginLeft: '4px', opacity: 0.7 }}>ℹ️</span>
                     </div>
                 </div>
+            </div>
+
+            {/* Predictive Insights */}
+            <div className="grid grid-2 gap-md mb-lg">
+                <SentimentTrendChart days={30} />
+                <ChurnRiskPanel />
             </div>
 
             {/* Sentiment Distribution */}

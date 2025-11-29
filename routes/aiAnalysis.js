@@ -368,4 +368,208 @@ router.get('/stats', async (req, res) => {
     }
 });
 
+/**
+ * GET /api/ai-analysis/trends
+ * Get sentiment trends and forecast
+ */
+router.get('/trends', async (req, res) => {
+    try {
+        const accountId = req.query.account_id;
+        const days = parseInt(req.query.days) || 30;
+
+        // Import services
+        const { calculateDailyTrends, forecastSentiment, detectAnomalies, getTrendInsights } = await import('../services/trendAnalysis.js');
+
+        // Calculate date range
+        const endDate = new Date().toISOString().split('T')[0];
+        const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+        // Get historical data
+        const historical = await calculateDailyTrends(accountId, startDate, endDate);
+
+        // Generate forecast
+        const forecast = forecastSentiment(historical, 7);
+
+        // Detect anomalies
+        const anomalies = detectAnomalies(historical);
+
+        // Generate insights
+        const insights = getTrendInsights(historical, forecast);
+
+        res.json({
+            historical,
+            forecast,
+            anomalies,
+            insights
+        });
+
+    } catch (err) {
+        console.error('Error fetching trends:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+/**
+ * GET /api/ai-analysis/churn-risks
+ * Get conversations with churn risk scores
+ */
+router.get('/churn-risks', async (req, res) => {
+    try {
+        const accountId = req.query.account_id;
+        const riskLevel = req.query.risk_level; // 'low', 'medium', 'high'
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 50;
+        const offset = (page - 1) * limit;
+
+        // Import service
+        const { getChurnStatistics } = await import('../services/churnPrediction.js');
+
+        // Get statistics
+        const stats = await getChurnStatistics(accountId);
+
+        // Build query for conversations
+        let query = `
+            SELECT 
+                a.*,
+                c.conversation_date,
+                c.uploaded_at,
+                c.lp_account_id
+            FROM ai_analysis_results a
+            JOIN conversations c ON a.conversation_id = c.conversation_id
+            WHERE a.churn_risk_score IS NOT NULL
+        `;
+
+        const params = [];
+
+        if (accountId) {
+            query += ' AND c.lp_account_id = ?';
+            params.push(accountId);
+        }
+
+        if (riskLevel) {
+            query += ' AND a.churn_risk_level = ?';
+            params.push(riskLevel);
+        }
+
+        query += ' ORDER BY a.churn_risk_score DESC LIMIT ? OFFSET ?';
+        params.push(limit, offset);
+
+        const conversations = await getAll(query, params);
+
+        // Parse JSON fields
+        conversations.forEach(conv => {
+            try {
+                conv.churn_risk_factors = JSON.parse(conv.churn_risk_factors || '[]');
+            } catch (e) {
+                conv.churn_risk_factors = [];
+            }
+        });
+
+        // Count total
+        let countQuery = `
+            SELECT COUNT(*) as total
+            FROM ai_analysis_results a
+            JOIN conversations c ON a.conversation_id = c.conversation_id
+            WHERE a.churn_risk_score IS NOT NULL
+        `;
+        const countParams = [];
+
+        if (accountId) {
+            countQuery += ' AND c.lp_account_id = ?';
+            countParams.push(accountId);
+        }
+
+        if (riskLevel) {
+            countQuery += ' AND a.churn_risk_level = ?';
+            countParams.push(riskLevel);
+        }
+
+        const { total } = await getOne(countQuery, countParams);
+
+        res.json({
+            statistics: stats,
+            conversations,
+            pagination: {
+                page,
+                limit,
+                total,
+                totalPages: Math.ceil(total / limit)
+            }
+        });
+
+    } catch (err) {
+        console.error('Error fetching churn risks:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+/**
+ * POST /api/ai-analysis/calculate-churn
+ * Calculate churn risk for conversations
+ */
+router.post('/calculate-churn', async (req, res) => {
+    try {
+        const { conversation_ids } = req.body;
+
+        // Import service
+        const { calculateChurnRisk } = await import('../services/churnPrediction.js');
+
+        // Get conversations to process
+        let conversations;
+        if (conversation_ids && Array.isArray(conversation_ids)) {
+            const placeholders = conversation_ids.map(() => '?').join(',');
+            conversations = await getAll(
+                `SELECT conversation_id FROM ai_analysis_results WHERE conversation_id IN (${placeholders})`,
+                conversation_ids
+            );
+        } else {
+            // Process all conversations with AI analysis but no churn score
+            conversations = await getAll(`
+                SELECT conversation_id 
+                FROM ai_analysis_results 
+                WHERE churn_risk_score IS NULL
+                LIMIT 100
+            `);
+        }
+
+        let processed = 0;
+        const errors = [];
+
+        for (const conv of conversations) {
+            try {
+                const churnData = await calculateChurnRisk(conv.conversation_id);
+
+                await runQuery(`
+                    UPDATE ai_analysis_results
+                    SET churn_risk_score = ?,
+                        churn_risk_factors = ?,
+                        churn_risk_level = ?
+                    WHERE conversation_id = ?
+                `, [
+                    churnData.score,
+                    JSON.stringify(churnData.factors),
+                    churnData.level,
+                    conv.conversation_id
+                ]);
+
+                processed++;
+            } catch (err) {
+                console.error(`Error calculating churn for ${conv.conversation_id}:`, err);
+                errors.push({ conversation_id: conv.conversation_id, error: err.message });
+            }
+        }
+
+        res.json({
+            success: true,
+            processed,
+            total: conversations.length,
+            errors: errors.length > 0 ? errors : undefined
+        });
+
+    } catch (err) {
+        console.error('Error calculating churn:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 export default router;
