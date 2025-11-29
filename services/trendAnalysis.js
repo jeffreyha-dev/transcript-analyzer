@@ -126,17 +126,18 @@ export function detectAnomalies(historicalData) {
  * Generate actionable insights from trend data
  */
 export function getTrendInsights(historicalData, forecast) {
-    if (!historicalData || historicalData.length < 7) {
+    if (!historicalData || historicalData.length < 2) {
         return {
             trend: 'insufficient_data',
             change_percent: 0,
-            message: 'Not enough data to generate insights'
+            message: 'Not enough data to generate insights (need at least 2 days)'
         };
     }
 
-    // Compare last 7 days to previous 7 days
-    const recent = historicalData.slice(-7);
-    const previous = historicalData.slice(-14, -7);
+    // Compare last period to previous period (adaptive based on data available)
+    const halfLength = Math.floor(historicalData.length / 2);
+    const recent = historicalData.slice(-halfLength);
+    const previous = historicalData.slice(0, halfLength);
 
     const recentAvg = recent.reduce((sum, d) => sum + d.avg_sentiment, 0) / recent.length;
     const previousAvg = previous.length > 0

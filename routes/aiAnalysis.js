@@ -378,14 +378,34 @@ router.get('/trends', async (req, res) => {
         const days = parseInt(req.query.days) || 30;
 
         // Import services
-        const { calculateDailyTrends, forecastSentiment, detectAnomalies, getTrendInsights } = await import('../services/trendAnalysis.js');
+        const { forecastSentiment, detectAnomalies, getTrendInsights } = await import('../services/trendAnalysis.js');
 
         // Calculate date range
         const endDate = new Date().toISOString().split('T')[0];
         const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
-        // Get historical data
-        const historical = await calculateDailyTrends(accountId, startDate, endDate);
+        // Get historical data from sentiment_trends table
+        let query = `
+            SELECT 
+                date,
+                avg_sentiment,
+                conversation_count,
+                positive_count,
+                negative_count,
+                neutral_count
+            FROM sentiment_trends
+            WHERE date >= ? AND date <= ?
+        `;
+        const params = [startDate, endDate];
+
+        if (accountId) {
+            query += ' AND account_id = ?';
+            params.push(accountId);
+        }
+
+        query += ' ORDER BY date ASC';
+
+        const historical = await getAll(query, params);
 
         // Generate forecast
         const forecast = forecastSentiment(historical, 7);
@@ -523,11 +543,11 @@ router.post('/calculate-churn', async (req, res) => {
                 conversation_ids
             );
         } else {
-            // Process all conversations with AI analysis but no churn score
+            // Process all conversations with AI analysis but no churn level
             conversations = await getAll(`
                 SELECT conversation_id 
                 FROM ai_analysis_results 
-                WHERE churn_risk_score IS NULL
+                WHERE churn_risk_level IS NULL
                 LIMIT 100
             `);
         }
