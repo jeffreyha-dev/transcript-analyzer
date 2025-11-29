@@ -29,7 +29,12 @@ export default function ChurnRiskPanel({ onNavigate }) {
         return (
             <div className="card">
                 <div className="card-header">
-                    <h3>🚨 Churn Risk Analysis</h3>
+                    <div>
+                        <h3>🚨 Churn Risk Analysis</h3>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+                            Based on AI Analysis
+                        </div>
+                    </div>
                 </div>
                 <div className="card-body" style={{ textAlign: 'center', padding: '2rem' }}>
                     <div className="spinner"></div>
@@ -43,7 +48,12 @@ export default function ChurnRiskPanel({ onNavigate }) {
         return (
             <div className="card">
                 <div className="card-header">
-                    <h3>🚨 Churn Risk Analysis</h3>
+                    <div>
+                        <h3>🚨 Churn Risk Analysis</h3>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+                            Based on AI Analysis
+                        </div>
+                    </div>
                 </div>
                 <div className="card-body">
                     <p style={{ color: 'var(--accent-danger)' }}>Error: {error}</p>
@@ -56,7 +66,12 @@ export default function ChurnRiskPanel({ onNavigate }) {
         return (
             <div className="card">
                 <div className="card-header">
-                    <h3>🚨 Churn Risk Analysis</h3>
+                    <div>
+                        <h3>🚨 Churn Risk Analysis</h3>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+                            Based on AI Analysis
+                        </div>
+                    </div>
                 </div>
                 <div className="card-body" style={{ textAlign: 'center', padding: '2rem' }}>
                     <p style={{ color: 'var(--text-secondary)' }}>No churn data available</p>
@@ -92,7 +107,12 @@ export default function ChurnRiskPanel({ onNavigate }) {
     return (
         <div className="card">
             <div className="card-header">
-                <h3>🚨 Churn Risk Analysis</h3>
+                <div>
+                    <h3>🚨 Churn Risk Analysis</h3>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+                        Based on AI Analysis
+                    </div>
+                </div>
             </div>
             <div className="card-body">
                 {/* Risk Summary */}
