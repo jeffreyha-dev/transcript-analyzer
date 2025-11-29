@@ -226,6 +226,7 @@ router.get('/dashboard', async (req, res) => {
       SELECT 
         c.conversation_id,
         c.conversation_date,
+        c.uploaded_at,
         a.sentiment_label,
         a.customer_satisfaction_score
       FROM conversations c

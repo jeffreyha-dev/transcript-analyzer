@@ -162,7 +162,7 @@ export default function Dashboard({ onNavigate }) {
                                             {conv.conversation_id}
                                         </td>
                                         <td>{conv.conversation_date || 'N/A'}</td>
-                                        <td>{new Date(conv.uploaded_at).toLocaleDateString()}</td>
+                                        <td>{conv.uploaded_at ? new Date(conv.uploaded_at).toLocaleDateString() : 'N/A'}</td>
                                         <td>
                                             {conv.sentiment_label ? (
                                                 <span className={`badge badge-${getSentimentBadgeType(conv.sentiment_label)}`}>
