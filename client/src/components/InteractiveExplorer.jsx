@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Filter, RefreshCw } from 'lucide-react';
 import api from '../utils/api';
 import IntentAnalysisChart from './visualizations/IntentAnalysisChart';
+import IntentInsightsPanel from './visualizations/IntentInsightsPanel';
 import EmpathyDistribution from './visualizations/EmpathyDistribution';
 import ChurnRiskVisuals from './visualizations/ChurnRiskVisuals';
 import ResolutionChart from './visualizations/ResolutionChart';
@@ -112,78 +113,90 @@ export default function InteractiveExplorer() {
                     <p className="text-sm text-muted mt-sm">Run AI analysis on your conversations to see insights here.</p>
                 </div>
             ) : (
-                <div className="grid grid-2 gap-lg">
-                    {/* Top Row: Intent Map & Empathy */}
+                <>
+                    {/* AI Insights Panel - Full Width */}
                     <motion.div
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 0.3 }}
-                        className="card"
-                        style={{ height: '400px' }}
+                        className="mb-lg"
                     >
-                        <div className="p-md border-b border-border mb-md flex justify-between items-end">
-                            <div>
-                                <h3 className="text-lg font-semibold">Intent Impact Analysis</h3>
-                                <p className="text-sm text-secondary">Volume vs Sentiment (Size = Complexity)</p>
+                        <IntentInsightsPanel accountId={null} />
+                    </motion.div>
+
+                    <div className="grid grid-2 gap-lg">
+                        {/* Top Row: Intent Map & Empathy */}
+                        <motion.div
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.3 }}
+                            className="card"
+                            style={{ height: '400px' }}
+                        >
+                            <div className="p-md border-b border-border mb-md flex justify-between items-end">
+                                <div>
+                                    <h3 className="text-lg font-semibold">Intent Impact Analysis</h3>
+                                    <p className="text-sm text-secondary">Volume vs Sentiment (Size = Complexity)</p>
+                                </div>
+                                <div className="text-xs text-secondary text-right">
+                                    Based on <span className="font-medium text-primary">{intentData.reduce((acc, curr) => acc + curr.count, 0)}</span> AI-analyzed conversations
+                                </div>
                             </div>
-                            <div className="text-xs text-secondary text-right">
-                                Based on <span className="font-medium text-primary">{intentData.reduce((acc, curr) => acc + curr.count, 0)}</span> AI-analyzed conversations
+                            <div style={{ height: '300px', width: '100%' }}>
+                                <IntentAnalysisChart data={intentData} />
                             </div>
-                        </div>
-                        <div style={{ height: '300px', width: '100%' }}>
-                            <IntentAnalysisChart data={intentData} />
-                        </div>
-                    </motion.div>
+                        </motion.div>
 
-                    <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.3, delay: 0.1 }}
-                        className="card"
-                        style={{ height: '400px' }}
-                    >
-                        <div className="p-md border-b border-border mb-md">
-                            <h3 className="text-lg font-semibold">Empathy Distribution</h3>
-                            <p className="text-sm text-secondary">Distribution of agent empathy scores across conversations</p>
-                        </div>
-                        <div style={{ height: '300px', width: '100%' }}>
-                            <EmpathyDistribution data={filteredData} />
-                        </div>
-                    </motion.div>
+                        <motion.div
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.3, delay: 0.1 }}
+                            className="card"
+                            style={{ height: '400px' }}
+                        >
+                            <div className="p-md border-b border-border mb-md">
+                                <h3 className="text-lg font-semibold">Empathy Distribution</h3>
+                                <p className="text-sm text-secondary">Distribution of agent empathy scores across conversations</p>
+                            </div>
+                            <div style={{ height: '300px', width: '100%' }}>
+                                <EmpathyDistribution data={filteredData} />
+                            </div>
+                        </motion.div>
 
-                    {/* Bottom Row: Churn Risk & Resolutions */}
-                    <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.3, delay: 0.2 }}
-                        className="card"
-                        style={{ height: '400px' }}
-                    >
-                        <div className="p-md border-b border-border mb-md">
-                            <h3 className="text-lg font-semibold">Churn Risk Analysis</h3>
-                            <p className="text-sm text-secondary">Overview of customer churn risk levels</p>
-                        </div>
-                        <div style={{ height: '300px', width: '100%' }}>
-                            <ChurnRiskVisuals data={filteredData} />
-                        </div>
-                    </motion.div>
+                        {/* Bottom Row: Churn Risk & Resolutions */}
+                        <motion.div
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.3, delay: 0.2 }}
+                            className="card"
+                            style={{ height: '400px' }}
+                        >
+                            <div className="p-md border-b border-border mb-md">
+                                <h3 className="text-lg font-semibold">Churn Risk Analysis</h3>
+                                <p className="text-sm text-secondary">Overview of customer churn risk levels</p>
+                            </div>
+                            <div style={{ height: '300px', width: '100%' }}>
+                                <ChurnRiskVisuals data={filteredData} />
+                            </div>
+                        </motion.div>
 
-                    <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.3, delay: 0.3 }}
-                        className="card"
-                        style={{ height: '400px' }}
-                    >
-                        <div className="p-md border-b border-border mb-md">
-                            <h3 className="text-lg font-semibold">Resolution Status</h3>
-                            <p className="text-sm text-secondary">Proportion of resolved vs. unresolved issues</p>
-                        </div>
-                        <div style={{ height: '300px', width: '100%' }}>
-                            <ResolutionChart data={filteredData} />
-                        </div>
-                    </motion.div>
-                </div>
+                        <motion.div
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.3, delay: 0.3 }}
+                            className="card"
+                            style={{ height: '400px' }}
+                        >
+                            <div className="p-md border-b border-border mb-md">
+                                <h3 className="text-lg font-semibold">Resolution Status</h3>
+                                <p className="text-sm text-secondary">Proportion of resolved vs. unresolved issues</p>
+                            </div>
+                            <div style={{ height: '300px', width: '100%' }}>
+                                <ResolutionChart data={filteredData} />
+                            </div>
+                        </motion.div>
+                    </div>
+                </>
             )}
         </div>
     );

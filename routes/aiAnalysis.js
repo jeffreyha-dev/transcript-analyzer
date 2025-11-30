@@ -426,6 +426,67 @@ router.get('/intents', async (req, res) => {
 });
 
 /**
+ * GET /api/ai-analysis/intent-insights
+ * Get AI-powered insights and recommendations based on intent analysis
+ */
+router.get('/intent-insights', async (req, res) => {
+    try {
+        const accountId = req.query.account_id;
+
+        // Import service
+        const { generateIntentInsights } = await import('../services/intentInsights.js');
+
+        // Get intent stats (reuse existing logic)
+        let whereClause = 'WHERE a.primary_intent IS NOT NULL';
+        const params = [];
+
+        if (accountId) {
+            whereClause += ' AND c.lp_account_id = ?';
+            params.push(accountId);
+        }
+
+        const query = `
+            SELECT 
+                a.primary_intent as intent,
+                COUNT(*) as count,
+                AVG(ar.overall_sentiment) as avg_sentiment,
+                AVG(
+                    CASE 
+                        WHEN a.complexity = 'High' THEN 3
+                        WHEN a.complexity = 'Medium' THEN 2
+                        ELSE 1
+                    END
+                ) as avg_complexity
+            FROM ai_analysis_results a
+            JOIN conversations c ON a.conversation_id = c.conversation_id
+            LEFT JOIN analysis_results ar ON a.conversation_id = ar.conversation_id
+            ${whereClause}
+            GROUP BY a.primary_intent
+            ORDER BY count DESC
+        `;
+
+        const intentData = await getAll(query, params);
+
+        // Format data
+        const formatted = intentData.map(r => ({
+            intent: r.intent,
+            count: r.count,
+            avg_sentiment: r.avg_sentiment || 50,
+            avg_complexity: r.avg_complexity
+        }));
+
+        // Generate insights
+        const insights = await generateIntentInsights(formatted);
+
+        res.json(insights);
+
+    } catch (err) {
+        console.error('Error generating intent insights:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+/**
  * GET /api/ai-analysis/trends
  * Get sentiment trends and forecast
  */

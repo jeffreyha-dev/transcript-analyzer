@@ -128,6 +128,12 @@ class APIClient {
         return this.request(url);
     }
 
+    async getIntentInsights(accountId = null) {
+        let url = '/ai-analysis/intent-insights';
+        if (accountId) url += `?account_id=${accountId}`;
+        return this.request(url);
+    }
+
     async getAISummary(conversationId) {
         return this.request(`/ai-analysis/summary/${conversationId}`);
     }
