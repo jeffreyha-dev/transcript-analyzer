@@ -2,13 +2,14 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Filter, RefreshCw } from 'lucide-react';
 import api from '../utils/api';
-import IntentClusterMap from './visualizations/IntentClusterMap';
+import IntentAnalysisChart from './visualizations/IntentAnalysisChart';
 import EmpathyDistribution from './visualizations/EmpathyDistribution';
 import ChurnRiskVisuals from './visualizations/ChurnRiskVisuals';
 import ResolutionChart from './visualizations/ResolutionChart';
 
 export default function InteractiveExplorer() {
     const [data, setData] = useState([]);
+    const [intentData, setIntentData] = useState([]);
     const [loading, setLoading] = useState(true);
     const [dateRange, setDateRange] = useState('all');
     const [error, setError] = useState(null);
@@ -19,8 +20,14 @@ export default function InteractiveExplorer() {
         try {
             // Fetch AI results (limit 500 for visualization)
             // Note: We might want to add date filtering to the API call in the future
-            const response = await api.getAIResults(1, 500);
+            // Fetch AI results (limit 500 for visualization)
+            // Note: We might want to add date filtering to the API call in the future
+            const [response, intents] = await Promise.all([
+                api.getAIResults(1, 500),
+                api.getIntentStats()
+            ]);
             setData(response.results || []);
+            setIntentData(intents || []);
         } catch (err) {
             console.error("Failed to load explorer data", err);
             setError("Failed to load analysis data. Please try again.");
@@ -115,11 +122,11 @@ export default function InteractiveExplorer() {
                         style={{ height: '400px' }}
                     >
                         <div className="p-md border-b border-border mb-md">
-                            <h3 className="text-lg font-semibold">Intent Clusters</h3>
-                            <p className="text-sm text-secondary">Grouping conversations by primary intent and sentiment</p>
+                            <h3 className="text-lg font-semibold">Intent Impact Analysis</h3>
+                            <p className="text-sm text-secondary">Volume vs Sentiment (Size = Complexity)</p>
                         </div>
                         <div style={{ height: '300px', width: '100%' }}>
-                            <IntentClusterMap data={filteredData} />
+                            <IntentAnalysisChart data={intentData} />
                         </div>
                     </motion.div>
 

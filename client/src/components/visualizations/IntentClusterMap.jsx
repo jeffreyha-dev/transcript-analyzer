@@ -13,7 +13,7 @@ export default function IntentClusterMap({ data }) {
     // 2. Process data for chart
     const chartData = data.map(d => ({
         ...d,
-        x: d.overall_sentiment || 0, // Sentiment on X
+        x: d.overall_sentiment !== undefined ? (d.overall_sentiment - 50) * 2 : 0, // Map 0-100 to -100 to 100
         y: intentMap[d.primary_intent || 'Unknown'], // Intent index on Y
         z: d.complexity === 'High' ? 300 : (d.complexity === 'Medium' ? 150 : 80), // Size by complexity
         intent: d.primary_intent || 'Unknown',

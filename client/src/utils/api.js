@@ -122,6 +122,12 @@ class APIClient {
         return this.request(url);
     }
 
+    async getIntentStats(accountId = null) {
+        let url = '/ai-analysis/intents';
+        if (accountId) url += `?account_id=${accountId}`;
+        return this.request(url);
+    }
+
     async getAISummary(conversationId) {
         return this.request(`/ai-analysis/summary/${conversationId}`);
     }
