@@ -121,9 +121,14 @@ export default function InteractiveExplorer() {
                         className="card"
                         style={{ height: '400px' }}
                     >
-                        <div className="p-md border-b border-border mb-md">
-                            <h3 className="text-lg font-semibold">Intent Impact Analysis</h3>
-                            <p className="text-sm text-secondary">Volume vs Sentiment (Size = Complexity)</p>
+                        <div className="p-md border-b border-border mb-md flex justify-between items-end">
+                            <div>
+                                <h3 className="text-lg font-semibold">Intent Impact Analysis</h3>
+                                <p className="text-sm text-secondary">Volume vs Sentiment (Size = Complexity)</p>
+                            </div>
+                            <div className="text-xs text-secondary text-right">
+                                Based on <span className="font-medium text-primary">{intentData.reduce((acc, curr) => acc + curr.count, 0)}</span> AI-analyzed conversations
+                            </div>
                         </div>
                         <div style={{ height: '300px', width: '100%' }}>
                             <IntentAnalysisChart data={intentData} />

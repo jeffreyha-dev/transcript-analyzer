@@ -13,23 +13,54 @@ export default function IntentAnalysisChart({ data }) {
         count: d.count
     }));
 
-    // 3. Custom Tooltip
+    // 2. Custom Tooltip - Show all intents at this position
     const CustomTooltip = ({ active, payload }) => {
         if (active && payload && payload.length) {
             const data = payload[0].payload;
+
+            // Find all intents with similar position (within 5 units on both axes)
+            const similarIntents = chartData.filter(d =>
+                Math.abs(d.x - data.x) < 5 &&
+                Math.abs(d.y - data.y) < 0.3
+            );
+
+            const showMultiple = similarIntents.length > 1;
+
             return (
-                <div className="card p-sm shadow-lg" style={{ border: '1px solid var(--border-color)', minWidth: '200px', backgroundColor: 'var(--bg-secondary)' }}>
-                    <p className="font-bold mb-xs" style={{ color: 'var(--text-primary)' }}>{data.intent}</p>
-                    <div className="grid grid-2 gap-xs text-xs" style={{ color: 'var(--text-secondary)' }}>
-                        <div>Volume:</div>
-                        <div className="text-right font-medium">{data.count} conversations</div>
-                        <div>Avg Sentiment:</div>
-                        <div className="text-right font-medium" style={{ color: data.x >= 0 ? 'var(--accent-success)' : 'var(--accent-danger)' }}>
-                            {data.x.toFixed(1)}
-                        </div>
-                        <div>Avg Complexity:</div>
-                        <div className="text-right font-medium">{data.complexity.toFixed(1)} / 3.0</div>
-                    </div>
+                <div className="card p-sm shadow-lg" style={{ border: '1px solid var(--border-color)', minWidth: '200px', maxWidth: '300px', backgroundColor: 'var(--bg-secondary)' }}>
+                    {showMultiple ? (
+                        <>
+                            <p className="font-bold mb-xs text-warning" style={{ color: 'var(--accent-warning)' }}>
+                                ⚠️ {similarIntents.length} Overlapping Intents
+                            </p>
+                            <div className="text-xs mb-sm" style={{ color: 'var(--text-secondary)', maxHeight: '150px', overflowY: 'auto' }}>
+                                {similarIntents.map((intent, idx) => (
+                                    <div key={idx} className="mb-xs pb-xs" style={{ borderBottom: idx < similarIntents.length - 1 ? '1px solid var(--border-color)' : 'none' }}>
+                                        <div className="font-medium" style={{ color: 'var(--text-primary)' }}>{intent.intent}</div>
+                                        <div className="text-xs">Volume: {intent.count}</div>
+                                    </div>
+                                ))}
+                            </div>
+                            <div className="text-xs pt-xs" style={{ borderTop: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}>
+                                <div>Total Volume: <span className="font-medium">{similarIntents.reduce((acc, i) => acc + i.count, 0)}</span></div>
+                                <div>Avg Sentiment: <span className="font-medium">{data.x.toFixed(1)}</span></div>
+                            </div>
+                        </>
+                    ) : (
+                        <>
+                            <p className="font-bold mb-xs" style={{ color: 'var(--text-primary)' }}>{data.intent}</p>
+                            <div className="grid grid-2 gap-xs text-xs" style={{ color: 'var(--text-secondary)' }}>
+                                <div>Volume:</div>
+                                <div className="text-right font-medium">{data.count} conversations</div>
+                                <div>Avg Sentiment:</div>
+                                <div className="text-right font-medium" style={{ color: data.x >= 0 ? 'var(--accent-success)' : 'var(--accent-danger)' }}>
+                                    {data.x.toFixed(1)}
+                                </div>
+                                <div>Avg Complexity:</div>
+                                <div className="text-right font-medium">{data.complexity.toFixed(1)} / 3.0</div>
+                            </div>
+                        </>
+                    )}
                 </div>
             );
         }
