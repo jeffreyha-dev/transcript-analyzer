@@ -330,6 +330,10 @@ class APIClient {
             body: JSON.stringify(params),
         });
     }
+
+    async getSkills(accountId) {
+        return this.request(`/liveperson/skills/${accountId}`);
+    }
 }
 
 export default new APIClient();

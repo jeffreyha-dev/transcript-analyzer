@@ -9,9 +9,18 @@ import {
     deleteLPAccount,
     toggleLPAccountStatus
 } from '../database.js';
-import { fetchLivePersonConversations, testLivePersonConnection } from '../services/livepersonService.js';
+import { fetchLivePersonConversations, testLivePersonConnection, fetchSkills } from '../services/livepersonService.js';
 
 const router = express.Router();
+
+function decrypt(text) {
+    // Placeholder for actual decryption if needed, or assume it's handled by service
+    // In service we treated token as plain text or handled inside auth header generation
+    // If database stores encrypted, we need a decrypt function. 
+    // Assuming previous context used simple text or encryption. 
+    // For now returning text as-is to match HEAD service usage which seemed to pass acc object directly.
+    return text;
+}
 
 // Get all LivePerson accounts
 router.get('/accounts', async (req, res) => {
@@ -113,6 +122,22 @@ router.post('/accounts/:id/test', async (req, res) => {
     }
 });
 
+// Get available skills for an account
+router.get('/skills/:accountId', async (req, res) => {
+    try {
+        const account = await getLPAccountById(req.params.accountId);
+        if (!account) {
+            return res.status(404).json({ error: 'Account not found' });
+        }
+
+        const skills = await fetchSkills(account);
+        res.json(skills);
+    } catch (error) {
+        console.error('Error fetching skills:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // Fetch conversations from LivePerson
 router.post('/fetch', async (req, res) => {
     try {
@@ -183,9 +208,6 @@ router.get('/export', async (req, res) => {
             query += ` AND conversation_date <= ?`;
             params.push(endDate);
         }
-
-        // Note: Status is stored in raw_lp_response, so we might need to filter in JS or extract it
-        // For now, let's fetch and filter if needed, or rely on the fact that we usually fetch by status
 
         const conversations = await new Promise((resolve, reject) => {
             db.all(query, params, (err, rows) => {

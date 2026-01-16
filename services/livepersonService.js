@@ -34,9 +34,15 @@ function generateOAuthSignature(method, url, params, consumerSecret, tokenSecret
  * Generate OAuth 1.0 authorization header
  */
 function generateOAuthHeader(account, method, url, additionalParams = {}) {
+    // Handle both full account object or just credentials object
+    const consumer_key = account.consumer_key || account.consumerKey;
+    const token = account.token;
+    const consumer_secret = account.consumer_secret || account.consumerSecret;
+    const token_secret = account.token_secret || account.tokenSecret;
+
     const oauthParams = {
-        oauth_consumer_key: account.consumer_key,
-        oauth_token: account.token,
+        oauth_consumer_key: consumer_key,
+        oauth_token: token,
         oauth_signature_method: 'HMAC-SHA1',
         oauth_timestamp: Math.floor(Date.now() / 1000).toString(),
         oauth_nonce: crypto.randomBytes(16).toString('hex'),
@@ -64,8 +70,8 @@ function generateOAuthHeader(account, method, url, additionalParams = {}) {
         method,
         baseUrl,
         allParams,
-        account.consumer_secret,
-        account.token_secret
+        consumer_secret,
+        token_secret
     );
 
     oauthParams.oauth_signature = signature;
@@ -149,11 +155,55 @@ export async function testLivePersonConnection(account) {
 }
 
 /**
+ * Fetch available skills for an account
+ */
+export async function fetchSkills(account) {
+    try {
+        const accountId = account.account_id || account.accountId;
+
+        // Discover accountConfigReadWrite domain
+        const domain = await getLivePersonDomain(accountId, 'accountConfigReadWrite');
+
+        // Construct skills API URL
+        const url = `https://${domain}/api/account/${accountId}/configuration/le-users/skills`;
+
+        const authHeader = generateOAuthHeader(account, 'GET', url);
+
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: {
+                'Authorization': authHeader,
+            },
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Skills API error (${response.status}): ${errorText}`);
+        }
+
+        const data = await response.json();
+
+        // Transform to consistent format with id and name
+        if (Array.isArray(data)) {
+            return data.map(skill => ({
+                id: skill.id,
+                name: skill.name || `Skill ${skill.id}`,
+            }));
+        }
+
+        return [];
+    } catch (error) {
+        console.error('Error fetching skills:', error);
+        throw error;
+    }
+}
+
+/**
  * Fetch conversations from LivePerson
  */
 export async function fetchLivePersonConversations(account, options = {}) {
     try {
-        const { startDate, endDate, limit = 100, offset = 0, status, skills } = options;
+        const { startDate, endDate, limit = 100, offset = 0, status, skills, onProgress } = options;
 
         console.log('Fetching LP conversations with options:', options);
 
@@ -164,9 +214,8 @@ export async function fetchLivePersonConversations(account, options = {}) {
         // Build API URL with query params for offset and limit
         const limitParam = Math.min(limit, 100);
         const url = `https://${domain}${account.api_endpoint_path.replace('{accountId}', account.account_id)}?offset=${offset || 0}&limit=${limitParam}`;
-        console.log('API URL:', url);
 
-        // Build request payload (body only contains start, status, etc.)
+        // Build request payload
         const payload = {
             start: {
                 from: startDate ? new Date(startDate).getTime() : Date.now() - 7 * 86400000,
@@ -176,23 +225,14 @@ export async function fetchLivePersonConversations(account, options = {}) {
 
         // Add status filter if specified
         if (status) {
-            payload.status = [status]; // LivePerson expects an array of statuses
+            payload.status = Array.isArray(status) ? status : [status];
         }
 
         // Add skills filter if specified
         if (skills && skills.length > 0) {
-            payload.skill = skills; // LivePerson expects an array of skill IDs
+            payload.skill = Array.isArray(skills) ? skills : [skills];
         }
 
-        console.log('Request payload:', JSON.stringify(payload, null, 2));
-        console.log('Date range:', {
-            from: new Date(payload.start.from).toISOString(),
-            to: new Date(payload.start.to).toISOString()
-        });
-
-        // Generate OAuth header
-        // Note: OAuth signature needs to include query params if they are in the URL
-        // The generateOAuthHeader function handles this if we pass the full URL
         const authHeader = generateOAuthHeader(account, 'POST', url);
 
         // Fetch conversations
@@ -212,22 +252,19 @@ export async function fetchLivePersonConversations(account, options = {}) {
         }
 
         const data = await response.json();
-        console.log('LP API Response:', {
-            totalRecords: data._metadata?.count || 0,
-            hasRecords: !!data.conversationHistoryRecords,
-            recordCount: data.conversationHistoryRecords?.length || 0,
-            requestedLimit: limit,
-            requestedOffset: offset
-        });
+        const totalRecords = data._metadata?.count || 0;
 
-        // Process and store conversations (limit to requested amount)
+        // Process and store conversations
         const imported = await processAndStoreConversations(data, account, limit);
 
-        console.log(`Batch complete: Requested ${limit}, API returned ${data.conversationHistoryRecords?.length || 0}, Imported ${imported}`);
+        // Report progress
+        if (onProgress) {
+            onProgress(imported, totalRecords);
+        }
 
         return {
             success: true,
-            totalFetched: data._metadata?.count || 0,
+            totalFetched: totalRecords,
             imported,
             apiReturned: data.conversationHistoryRecords?.length || 0,
             message: `Successfully fetched ${imported} conversations`
@@ -250,41 +287,27 @@ async function processAndStoreConversations(data, account, limit = 100) {
 
     // Limit the number of conversations to process
     const conversationsToProcess = data.conversationHistoryRecords.slice(0, limit);
-    console.log(`Processing ${conversationsToProcess.length} out of ${data.conversationHistoryRecords.length} conversations (limit: ${limit})`);
 
     for (const record of conversationsToProcess) {
         try {
             const conversationId = `lp_${account.account_id}_${record.info.conversationId}`;
 
-            console.log('Processing conversation:', conversationId);
-            console.log('Participants:', JSON.stringify(record.info?.participants, null, 2));
-
-            // Build transcript from messages with correct speaker identification
+            // Build transcript from messages
             const transcript = record.messageRecords
                 ?.map((msg) => {
-                    // LivePerson uses "sentBy" field with values "Agent" or "Consumer"
-                    let sender = 'Consumer'; // Default to Consumer as per reference script logic (though reference checks explicitly)
-
-                    if (msg.sentBy === 'Agent') {
-                        sender = 'Agent';
-                    } else if (msg.sentBy === 'Consumer') {
-                        sender = 'Consumer';
-                    } else {
-                        return null; // Skip system messages or others
-                    }
+                    let sender = 'Consumer';
+                    if (msg.sentBy === 'Agent') sender = 'Agent';
+                    else if (msg.sentBy === 'Consumer') sender = 'Consumer';
+                    else return null;
 
                     let text = msg.messageData?.msg?.text || '';
                     if (!text || String(text).trim() === '') return null;
-
-                    // Normalize internal newlines/whitespace to keep one line per message
                     text = String(text).replace(/\r\n|\r|\n/g, ' ').replace(/\s+/g, ' ').trim();
 
                     return `${sender}: ${text}`;
                 })
-                .filter(Boolean) // Remove nulls
-                .join('\n') || ''; // Join with newline instead of pipe
-
-            console.log('First 200 chars of transcript:', transcript.substring(0, 200));
+                .filter(Boolean)
+                .join('\n') || '';
 
             // Calculate conversation date and duration
             const startTime = record.info.startTime;
