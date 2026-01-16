@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { Download, Settings, Calendar, Filter, RefreshCw, ChevronDown, X as XIcon, Plus, Trash2, Edit2 } from 'lucide-react';
 import api, { API_BASE_URL } from '../utils/api';
 
-export default function LivePersonFetch() {
+export default function LivePersonFetch({ onNavigate }) {
     // Account State
     const [accounts, setAccounts] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -36,6 +36,7 @@ export default function LivePersonFetch() {
     const [selectedSkillIds, setSelectedSkillIds] = useState([]);
     const [showSkillDropdown, setShowSkillDropdown] = useState(false);
     const [skillSearchQuery, setSkillSearchQuery] = useState('');
+    const [runningAnalysis, setRunningAnalysis] = useState(false);
     const dropdownRef = useRef(null);
 
     // Fetch Execution State
@@ -230,18 +231,23 @@ export default function LivePersonFetch() {
                 endDate: dateRange.endDate
             });
 
-            if (status.length > 0) {
-                // API mostly expects one status for CSV or we filter manually. 
-                // Currently API export implementation filters by SINGLE status if provided?
-                // Or relies on query. Let's send the first one or logic needs update if multi-status export needed.
-                // For now, assume mainly seeking CLOSED.
-                // Or don't send status to export ALL and let backend filter? 
-                // Backend 'status' param is singular in previous impl.
-            }
-
             window.location.href = `${API_BASE_URL}/liveperson/export?${params.toString()}`;
         } catch (error) {
             alert('Failed to export: ' + error.message);
+        }
+    };
+
+    const handleViewInAnalysis = async () => {
+        try {
+            setRunningAnalysis(true);
+            if (api.runAnalysis) {
+                await api.runAnalysis();
+            }
+            onNavigate?.('analysis');
+        } catch (error) {
+            alert('Error running analysis: ' + error.message);
+        } finally {
+            setRunningAnalysis(false);
         }
     };
 
@@ -538,12 +544,54 @@ export default function LivePersonFetch() {
                     </div>
 
                     {fetchStatus && (
-                        <div className={`alert ${fetchStatus.success ? 'alert-success' : fetchStatus.loading ? 'alert-info' : 'alert-error'}`}>
-                            <div>
-                                {fetchStatus.loading && <RefreshCw className="animate-spin" />}
-                                <span>{fetchStatus.message}</span>
+                        <motion.div
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="space-y-4"
+                        >
+                            <div className={`alert ${fetchStatus.success ? 'alert-success' : fetchStatus.loading ? 'alert-info' : 'alert-error'}`}>
+                                <div>
+                                    {fetchStatus.loading && <RefreshCw className="animate-spin" />}
+                                    <span>{fetchStatus.message}</span>
+                                </div>
                             </div>
-                        </div>
+
+                            {fetchStatus.success && (
+                                <>
+                                    <div className="stats stats-vertical shadow w-full">
+                                        <div className="stat">
+                                            <div className="stat-title">Total Fetched</div>
+                                            <div className="stat-value text-primary">{fetchStatus.totalFetched || fetchStatus.imported}</div>
+                                        </div>
+                                        <div className="stat">
+                                            <div className="stat-title">Imported/Updated</div>
+                                            <div className="stat-value text-success">{fetchStatus.imported}</div>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex flex-col gap-2">
+                                        <button
+                                            onClick={handleViewInAnalysis}
+                                            className="btn btn-secondary btn-sm"
+                                            disabled={runningAnalysis}
+                                        >
+                                            {runningAnalysis ? (
+                                                <>
+                                                    <div className="loading loading-spinner loading-xs"></div>
+                                                    Analyzing...
+                                                </>
+                                            ) : (
+                                                'View in Analysis'
+                                            )}
+                                        </button>
+                                        <button className="btn btn-ghost btn-sm" onClick={() => setFetchStatus(null)}>
+                                            <RefreshCw size={16} />
+                                            Clear Results
+                                        </button>
+                                    </div>
+                                </>
+                            )}
+                        </motion.div>
                     )}
 
                     {/* Instructions/Placeholder */}

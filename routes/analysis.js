@@ -27,6 +27,7 @@ router.post('/run', async (req, res) => {
         SELECT c.* FROM conversations c
         LEFT JOIN analysis_results a ON c.conversation_id = a.conversation_id
         WHERE a.id IS NULL
+
       `);
         }
 
@@ -115,7 +116,9 @@ router.get('/results', async (req, res) => {
         a.*,
         c.conversation_date,
         c.uploaded_at,
-        c.lp_account_id
+        c.lp_account_id,
+        c.source,
+        c.external_id
       FROM analysis_results a
       JOIN conversations c ON a.conversation_id = c.conversation_id
       WHERE 1=1

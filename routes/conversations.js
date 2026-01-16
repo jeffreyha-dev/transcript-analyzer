@@ -212,7 +212,7 @@ router.get('/', async (req, res) => {
         const offset = (page - 1) * limit;
 
         const conversations = await getAll(
-            `SELECT id, conversation_id, conversation_date, uploaded_at, message_count 
+            `SELECT id, conversation_id, conversation_date, uploaded_at, message_count, source, external_id 
        FROM conversations 
        ORDER BY uploaded_at DESC 
        LIMIT ? OFFSET ?`,

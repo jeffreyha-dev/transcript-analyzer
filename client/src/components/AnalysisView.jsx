@@ -302,7 +302,7 @@ export default function AnalysisView() {
                                                             fontSize: 'inherit'
                                                         }}
                                                     >
-                                                        {result.conversation_id}
+                                                        {result.source === 'liveperson' && result.external_id ? result.external_id : result.conversation_id}
                                                     </button>
                                                     {result.source === 'liveperson' && (
                                                         <span style={{

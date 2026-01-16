@@ -2,6 +2,9 @@ import { useState } from 'react';
 import Dashboard from './components/Dashboard';
 import ImportView from './components/ImportView';
 import CombinedAnalysisView from './components/CombinedAnalysisView';
+import ConversationsView from './components/ConversationsView';
+import AIAnalysisView from './components/AIAnalysisView';
+import LivePersonFetch from './components/LivePersonFetch';
 import ExportView from './components/ExportView';
 import SettingsView from './components/SettingsView';
 import InteractiveExplorer from './components/InteractiveExplorer';
@@ -59,10 +62,28 @@ function App() {
                       📥 Import
                     </button>
                     <button
+                      className={`btn ${currentView === 'conversations' ? 'btn-primary' : 'btn-secondary'}`}
+                      onClick={() => setCurrentView('conversations')}
+                    >
+                      💬 Conversations
+                    </button>
+                    <button
                       className={`btn ${currentView === 'analysis' ? 'btn-primary' : 'btn-secondary'}`}
                       onClick={() => setCurrentView('analysis')}
                     >
                       📊 Analysis
+                    </button>
+                    <button
+                      className={`btn ${currentView === 'ai-analysis' ? 'btn-primary' : 'btn-secondary'}`}
+                      onClick={() => setCurrentView('ai-analysis')}
+                    >
+                      🤖 AI Analysis
+                    </button>
+                    <button
+                      className={`btn ${currentView === 'liveperson' ? 'btn-primary' : 'btn-secondary'}`}
+                      onClick={() => setCurrentView('liveperson')}
+                    >
+                      🔗 LivePerson
                     </button>
                     <button
                       className={`btn ${currentView === 'explore' ? 'btn-primary' : 'btn-secondary'}`}
@@ -92,7 +113,10 @@ function App() {
           <main style={{ flex: 1 }}>
             {currentView === 'dashboard' && <Dashboard onNavigate={setCurrentView} />}
             {currentView === 'import' && <ImportView />}
+            {currentView === 'conversations' && <ConversationsView />}
             {currentView === 'analysis' && <CombinedAnalysisView />}
+            {currentView === 'ai-analysis' && <AIAnalysisView />}
+            {currentView === 'liveperson' && <LivePersonFetch onNavigate={setCurrentView} />}
             {currentView === 'explore' && <InteractiveExplorer />}
             {currentView === 'export' && <ExportView />}
             {currentView === 'settings' && <SettingsView />}

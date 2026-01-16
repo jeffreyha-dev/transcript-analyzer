@@ -14,11 +14,6 @@ import { fetchLivePersonConversations, testLivePersonConnection, fetchSkills } f
 const router = express.Router();
 
 function decrypt(text) {
-    // Placeholder for actual decryption if needed, or assume it's handled by service
-    // In service we treated token as plain text or handled inside auth header generation
-    // If database stores encrypted, we need a decrypt function. 
-    // Assuming previous context used simple text or encryption. 
-    // For now returning text as-is to match HEAD service usage which seemed to pass acc object directly.
     return text;
 }
 
