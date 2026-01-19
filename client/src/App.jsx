@@ -13,6 +13,8 @@ import { AnalysisProvider } from './context/AnalysisContext';
 import { AccountProvider } from './context/AccountContext';
 import './index.css';
 
+import { LayoutDashboard, Upload, MessageSquare, BarChart2, Cpu, Link, Compass, Download, Settings as SettingsIcon } from 'lucide-react';
+
 function App() {
   const [currentView, setCurrentView] = useState('dashboard');
 
@@ -30,78 +32,97 @@ function App() {
             backdropFilter: 'blur(20px)',
             backgroundColor: 'rgba(19, 24, 37, 0.9)'
           }}>
-            <div className="container">
-              <div className="flex justify-between items-center" style={{ padding: '1rem 0' }}>
+            <div className="container" style={{ maxWidth: '100%', padding: '0 1rem' }}>
+              <div className="flex justify-between items-center" style={{ padding: '0.75rem 0' }}>
                 <div className="flex items-center gap-md">
                   <div style={{
-                    fontSize: '1.5rem',
+                    fontSize: '1.25rem',
                     fontWeight: 800,
                     background: 'var(--gradient-primary)',
                     WebkitBackgroundClip: 'text',
                     WebkitTextFillColor: 'transparent',
-                    backgroundClip: 'text'
+                    backgroundClip: 'text',
+                    whiteSpace: 'nowrap'
                   }}>
                     📊 Transcript Analyzer
                   </div>
                 </div>
 
-                <div className="flex items-center gap-md">
+                <div className="flex items-center gap-sm">
                   <AccountSelector />
 
-                  <div className="flex gap-sm">
+                  <div className="flex gap-2 text-sm">
                     <button
-                      className={`btn ${currentView === 'dashboard' ? 'btn-primary' : 'btn-secondary'}`}
+                      className={`btn btn-sm ${currentView === 'dashboard' ? 'btn-primary' : 'btn-secondary'}`}
                       onClick={() => setCurrentView('dashboard')}
+                      title="Dashboard"
                     >
-                      📈 Dashboard
+                      <LayoutDashboard size={14} />
+                      <span className="nav-label">Dashboard</span>
                     </button>
                     <button
-                      className={`btn ${currentView === 'import' ? 'btn-primary' : 'btn-secondary'}`}
+                      className={`btn btn-sm ${currentView === 'import' ? 'btn-primary' : 'btn-secondary'}`}
                       onClick={() => setCurrentView('import')}
+                      title="Import"
                     >
-                      📥 Import
+                      <Upload size={14} />
+                      <span className="nav-label">Import</span>
                     </button>
                     <button
-                      className={`btn ${currentView === 'conversations' ? 'btn-primary' : 'btn-secondary'}`}
+                      className={`btn btn-sm ${currentView === 'conversations' ? 'btn-primary' : 'btn-secondary'}`}
                       onClick={() => setCurrentView('conversations')}
+                      title="Conversations"
                     >
-                      💬 Conversations
+                      <MessageSquare size={14} />
+                      <span className="nav-label">Conversations</span>
                     </button>
                     <button
-                      className={`btn ${currentView === 'analysis' ? 'btn-primary' : 'btn-secondary'}`}
+                      className={`btn btn-sm ${currentView === 'analysis' ? 'btn-primary' : 'btn-secondary'}`}
                       onClick={() => setCurrentView('analysis')}
+                      title="Analysis"
                     >
-                      📊 Analysis
+                      <BarChart2 size={14} />
+                      <span className="nav-label">Analysis</span>
                     </button>
                     <button
-                      className={`btn ${currentView === 'ai-analysis' ? 'btn-primary' : 'btn-secondary'}`}
+                      className={`btn btn-sm ${currentView === 'ai-analysis' ? 'btn-primary' : 'btn-secondary'}`}
                       onClick={() => setCurrentView('ai-analysis')}
+                      title="AI Analysis"
                     >
-                      🤖 AI Analysis
+                      <Cpu size={14} />
+                      <span className="nav-label">AI Analysis</span>
                     </button>
                     <button
-                      className={`btn ${currentView === 'liveperson' ? 'btn-primary' : 'btn-secondary'}`}
+                      className={`btn btn-sm ${currentView === 'liveperson' ? 'btn-primary' : 'btn-secondary'}`}
                       onClick={() => setCurrentView('liveperson')}
+                      title="LivePerson"
                     >
-                      🔗 LivePerson
+                      <Link size={14} />
+                      <span className="nav-label">LivePerson</span>
                     </button>
                     <button
-                      className={`btn ${currentView === 'explore' ? 'btn-primary' : 'btn-secondary'}`}
+                      className={`btn btn-sm ${currentView === 'explore' ? 'btn-primary' : 'btn-secondary'}`}
                       onClick={() => setCurrentView('explore')}
+                      title="Explore"
                     >
-                      🧭 Explore
+                      <Compass size={14} />
+                      <span className="nav-label">Explore</span>
                     </button>
                     <button
-                      className={`btn ${currentView === 'export' ? 'btn-primary' : 'btn-secondary'}`}
+                      className={`btn btn-sm ${currentView === 'export' ? 'btn-primary' : 'btn-secondary'}`}
                       onClick={() => setCurrentView('export')}
+                      title="Export"
                     >
-                      ⬇️ Export
+                      <Download size={14} />
+                      <span className="nav-label">Export</span>
                     </button>
                     <button
-                      className={`btn ${currentView === 'settings' ? 'btn-primary' : 'btn-secondary'}`}
+                      className={`btn btn-sm ${currentView === 'settings' ? 'btn-primary' : 'btn-secondary'}`}
                       onClick={() => setCurrentView('settings')}
+                      title="Settings"
                     >
-                      ⚙️ Settings
+                      <SettingsIcon size={14} />
+                      <span className="nav-label">Settings</span>
                     </button>
                   </div>
                 </div>

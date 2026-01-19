@@ -701,76 +701,76 @@ export default function AIAnalysisView() {
                         </div>
                     ) : (
                         <>
-                            <div className="table-container">
-                                <table className="data-table">
+                            <div className="table-container fade-in">
+                                <table className="data-table table-compact" style={{ width: '100%', minWidth: '940px', borderCollapse: 'separate', borderSpacing: '0' }}>
                                     <thead>
                                         <tr>
-                                            <th>Conversation ID</th>
+                                            <th style={{ whiteSpace: 'nowrap', width: '140px' }}>ID</th>
                                             <th>Summary</th>
-                                            <th>Intent</th>
-                                            <th>Complexity</th>
-                                            <th>Empathy</th>
-                                            <th>Churn Risk</th>
-                                            <th>Provider</th>
-                                            <th>Resolved</th>
-                                            <th>Actions</th>
+                                            <th style={{ whiteSpace: 'nowrap', width: '120px' }}>Intent</th>
+                                            <th style={{ whiteSpace: 'nowrap', textAlign: 'center', width: '90px' }}>Complexity</th>
+                                            <th style={{ whiteSpace: 'nowrap', textAlign: 'center', width: '70px' }}>Empathy</th>
+                                            <th style={{ whiteSpace: 'nowrap', textAlign: 'center', width: '80px' }}>Churn Risk</th>
+                                            <th style={{ whiteSpace: 'nowrap', textAlign: 'center', width: '80px' }}>Provider</th>
+                                            <th style={{ whiteSpace: 'nowrap', textAlign: 'center', width: '70px' }}>Status</th>
+                                            <th style={{ whiteSpace: 'nowrap', textAlign: 'right', width: '80px' }}>Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {results.map((result) => (
                                             <tr key={result.id}>
-                                                <td style={{ fontFamily: 'monospace', fontSize: '0.875rem' }}>
-                                                    {result.conversation_id}
+                                                <td style={{ fontFamily: 'monospace', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                                    <div style={{ maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis' }} title={result.conversation_id}>
+                                                        {result.conversation_id}
+                                                    </div>
                                                 </td>
-                                                <td style={{ maxWidth: '300px' }}>
+                                                <td>
                                                     <div style={{
+                                                        maxWidth: '300px',
                                                         overflow: 'hidden',
                                                         textOverflow: 'ellipsis',
                                                         whiteSpace: 'nowrap',
-                                                        fontSize: '0.875rem'
-                                                    }}>
+                                                        color: 'var(--text-secondary)'
+                                                    }} title={result.summary}>
                                                         {result.summary}
                                                     </div>
                                                 </td>
                                                 <td>
-                                                    <span className="badge badge-info" style={{ fontSize: '0.75rem', textTransform: 'capitalize' }}>
+                                                    <span className="badge badge-info" style={{ fontSize: '0.7rem', textTransform: 'capitalize' }}>
                                                         {result.primary_intent?.replace(/_/g, ' ')}
                                                     </span>
                                                 </td>
-                                                <td>
+                                                <td style={{ textAlign: 'center' }}>
                                                     <span className="badge" style={{
                                                         background: getComplexityColor(result.complexity),
-                                                        fontSize: '0.75rem'
+                                                        fontSize: '0.7rem',
+                                                        padding: '0.15rem 0.5rem'
                                                     }}>
                                                         {result.complexity}
                                                     </span>
                                                 </td>
-                                                <td style={{ color: getScoreColor(result.empathy_score), fontWeight: '600' }}>
+                                                <td style={{ textAlign: 'center', color: getScoreColor(result.empathy_score), fontWeight: '600' }}>
                                                     {result.empathy_score}
                                                 </td>
-                                                <td style={{ color: getScoreColor(100 - result.churn_risk_score), fontWeight: '600' }}>
+                                                <td style={{ textAlign: 'center', color: getScoreColor(100 - result.churn_risk_score), fontWeight: '600' }}>
                                                     {result.churn_risk_score}
                                                 </td>
-                                                <td>
-                                                    <span className="badge badge-neutral" style={{
-                                                        fontSize: '0.75rem',
-                                                        textTransform: 'capitalize',
-                                                        fontFamily: 'monospace'
-                                                    }}>
+                                                <td style={{ textAlign: 'center' }}>
+                                                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>
                                                         {result.provider_used || 'N/A'}
                                                     </span>
                                                 </td>
-                                                <td>
-                                                    <span className={`badge ${result.resolved ? 'badge-success' : 'badge-warning'}`}>
+                                                <td style={{ textAlign: 'center' }}>
+                                                    <span className={`badge ${result.resolved ? 'badge-success' : 'badge-warning'}`} style={{ fontSize: '0.7rem', padding: '0.15rem 0.4rem' }}>
                                                         {result.resolved ? '✓' : '✗'}
                                                     </span>
                                                 </td>
-                                                <td>
+                                                <td style={{ textAlign: 'right' }}>
                                                     <button
                                                         onClick={() => viewDetails(result.conversation_id)}
                                                         className="btn btn-sm btn-secondary"
                                                     >
-                                                        View Details
+                                                        Details
                                                     </button>
                                                 </td>
                                             </tr>

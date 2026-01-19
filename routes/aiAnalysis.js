@@ -406,61 +406,6 @@ router.get('/stats', async (req, res) => {
 });
 
 /**
- * GET /api/ai-analysis/intents
- * Get aggregated statistics by intent (Volume, Sentiment, Complexity)
- */
-router.get('/intents', async (req, res) => {
-    try {
-        const accountId = req.query.account_id;
-
-        let whereClause = 'WHERE a.primary_intent IS NOT NULL';
-        const params = [];
-
-        if (accountId) {
-            whereClause += ' AND c.lp_account_id = ?';
-            params.push(accountId);
-        }
-
-        // Aggregate data server-side for accuracy across full dataset
-        const query = `
-            SELECT 
-                a.primary_intent as intent,
-                COUNT(*) as count,
-                AVG(ar.overall_sentiment) as avg_sentiment,
-                AVG(
-                    CASE 
-                        WHEN a.complexity = 'High' THEN 3
-                        WHEN a.complexity = 'Medium' THEN 2
-                        ELSE 1
-                    END
-                ) as avg_complexity
-            FROM ai_analysis_results a
-            JOIN conversations c ON a.conversation_id = c.conversation_id
-            LEFT JOIN analysis_results ar ON a.conversation_id = ar.conversation_id
-            ${whereClause}
-            GROUP BY a.primary_intent
-            ORDER BY count DESC
-        `;
-
-        const results = await getAll(query, params);
-
-        // Format results
-        const formatted = results.map(r => ({
-            intent: r.intent,
-            count: r.count,
-            avg_sentiment: r.avg_sentiment || 50, // Default to neutral if missing
-            avg_complexity: r.avg_complexity
-        }));
-
-        res.json(formatted);
-
-    } catch (err) {
-        console.error('Error fetching intent stats:', err);
-        res.status(500).json({ error: err.message });
-    }
-});
-
-/**
  * GET /api/ai-analysis/intent-insights
  * Get AI-powered insights and recommendations based on intent analysis
  */

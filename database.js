@@ -153,6 +153,8 @@ function initDatabase() {
           processing_time_ms INTEGER,
           analyzed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           custom_data TEXT,
+          churn_risk_level TEXT,
+          churn_risk_factors TEXT,
           
           FOREIGN KEY (conversation_id) REFERENCES conversations(conversation_id) ON DELETE CASCADE
         )
@@ -173,6 +175,24 @@ function initDatabase() {
         )
       `, (err) => {
         if (err) console.error('Error creating ai_cost_tracking table:', err);
+      });
+
+      // Sentiment Trends table
+      db.run(`
+        CREATE TABLE IF NOT EXISTS sentiment_trends (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          date DATE NOT NULL,
+          avg_sentiment REAL,
+          conversation_count INTEGER,
+          positive_count INTEGER,
+          negative_count INTEGER,
+          neutral_count INTEGER,
+          account_id INTEGER,
+          calculated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(date, account_id)
+        )
+      `, (err) => {
+        if (err) console.error('Error creating sentiment_trends table:', err);
       });
 
       // AI Settings table

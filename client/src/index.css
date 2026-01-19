@@ -387,8 +387,19 @@ h4 {
 
 /* Button Size Variants */
 .btn-sm {
-  padding: 0.5rem 1rem;
-  font-size: 0.8125rem;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.75rem;
+}
+
+/* Navigation Labels */
+.nav-label {
+  display: none;
+}
+
+@media (min-width: 1400px) {
+  .nav-label {
+    display: inline;
+  }
 }
 
 /* Table Component */
@@ -396,6 +407,22 @@ h4 {
   overflow-x: auto;
   border-radius: var(--radius-lg);
   border: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  width: 100%;
+  position: relative;
+}
+
+.table-compact {
+  font-size: 0.8125rem;
+}
+
+.table-compact th,
+.table-compact td {
+  padding: 0.75rem 0.5rem;
+}
+
+.table-compact th {
+  font-size: 0.75rem;
 }
 
 table {
