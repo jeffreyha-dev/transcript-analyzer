@@ -310,6 +310,41 @@ router.get('/costs', async (req, res) => {
 });
 
 /**
+ * GET /api/ai-analysis/intents
+ * Get aggregated intent data for cloud visualization
+ */
+router.get('/intents', async (req, res) => {
+    try {
+        const query = `
+            SELECT 
+                a.primary_intent as intent,
+                COUNT(*) as count,
+                AVG(ar.overall_sentiment) as avgSentiment
+            FROM ai_analysis_results a
+            LEFT JOIN analysis_results ar ON a.conversation_id = ar.conversation_id
+            WHERE a.primary_intent IS NOT NULL
+            GROUP BY a.primary_intent
+            ORDER BY count DESC
+            LIMIT 50
+        `;
+
+        const results = await getAll(query);
+
+        // Normalize results
+        const normalized = results.map(r => ({
+            intent: r.intent,
+            count: r.count,
+            avgSentiment: r.avgSentiment || 50 // Default to neutral if no sentiment
+        }));
+
+        res.json(normalized);
+    } catch (err) {
+        console.error('Error fetching intents:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+/**
  * GET /api/ai-analysis/stats
  * Get quick statistics for dashboard
  */

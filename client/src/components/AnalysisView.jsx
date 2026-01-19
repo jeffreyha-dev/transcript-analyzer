@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import api from '../utils/api';
 import { useAnalysis } from '../context/AnalysisContext';
 import { useAccount } from '../context/AccountContext';
+import IntentCloud from './IntentCloud';
 
 export default function AnalysisView() {
     const [results, setResults] = useState([]);
@@ -217,6 +218,11 @@ export default function AnalysisView() {
                     <p style={{ color: 'var(--accent-danger)' }}>{error}</p>
                 </div>
             )}
+
+            {/* Intent Cloud Visualization */}
+            <div className="mb-6">
+                <IntentCloud />
+            </div>
 
             {/* Filters */}
             <div className="card mb-md">
